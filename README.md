@@ -1,4 +1,4 @@
-# Digital Onboarding Dashboard (HDFC Bank ManageNow Replica)
+# Digital Onboarding Dashboard 
 
 A full-stack, dynamic web application designed to track, visualize, and analyze digital onboarding metrics across different products, channels, regions, and segments. It features a sleek React frontend connected to a high-performance Python FastAPI backend, utilizing ClickHouse for rapid time-series analytical queries.
 
