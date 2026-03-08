@@ -63,7 +63,7 @@ python -m venv venv
 
 Install the core Python packages:
 ```bash
-pip install fastapi uvicorn clickhouse-connect pydantic python-dotenv
+pip install -r requirements.txt
 ```
 
 Generate the Database Schema and load the mock algorithm rows:
@@ -74,7 +74,7 @@ python scripts/load_data.py
 
 Run the API Node Development Server:
 ```bash
-uvicorn app.main:app --reload
+python -m uvicorn main:app --reload
 ```
 
 ### 3. Frontend Dependencies
