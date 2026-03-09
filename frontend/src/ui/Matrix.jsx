@@ -19,7 +19,7 @@ export default function Matrix({matrix}) {
         </span>
       </div>
       <div className="matrix-subtitle">
-        Drop rate at each onboarding stage per product · Click any cell to drill down
+        Drop rate at each onboarding stage per product.
       </div>
 
       <table className="matrix-table">
