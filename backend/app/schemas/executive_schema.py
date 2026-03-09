@@ -2,30 +2,15 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict
 from datetime import datetime
 
-
-# -------------------------
-# ALERT
-# -------------------------
-
 class Alert(BaseModel):
     text: str
     severity: str
-
-
-# -------------------------
-# OVERALL HEALTH
-# -------------------------
 
 class OverallHealth(BaseModel):
     status: str
     critical_products: int
     message: str
     alerts: List[Alert]
-
-
-# -------------------------
-# KPI CARDS
-# -------------------------
 
 class OnboardingStarted(BaseModel):
     value: int
@@ -68,10 +53,6 @@ class KPICards(BaseModel):
     pipeline_at_risk: PipelineAtRisk
 
 
-# -------------------------
-# FILTERS
-# -------------------------
-
 class FiltersApplied(BaseModel):
     time_range: str
     comparison: Optional[str]
@@ -79,10 +60,6 @@ class FiltersApplied(BaseModel):
     region: str
     segment: str
 
-
-# -------------------------
-# FINAL RESPONSE
-# -------------------------
 
 class ExecutiveResponse(BaseModel):
     overall_health: OverallHealth
