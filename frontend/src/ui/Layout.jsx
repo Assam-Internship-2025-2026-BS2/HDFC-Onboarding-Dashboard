@@ -1,6 +1,7 @@
 import { Outlet, NavLink } from "react-router-dom";
 import { useState, useEffect } from "react";
 import hdfcLogo from "../hdfc-logo.png";
+import Footer from "./Footer";
 
 export default function Layout() {
   const [darkMode, setDarkMode] = useState(
@@ -52,6 +53,7 @@ export default function Layout() {
         </div>
       </div>
       <Outlet />
+      <Footer />
     </div>
   );
 }
