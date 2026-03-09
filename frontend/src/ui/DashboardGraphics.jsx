@@ -85,7 +85,7 @@ export default function DashboardGraphics({ data }) {
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value) => `${value}%`}
+                formatter={(value) => `${value}`}
                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
               />
               <Legend
