@@ -11,10 +11,10 @@ class MetricsRepository:
 
         query = """
         SELECT
-            SUM(started),
-            SUM(completed),
-            SUM(failures)
-        FROM dashboard_data
+            SUM(total_started),
+            SUM(total_completed),
+            SUM(total_failures)
+        FROM dashboard_daily_aggregated
         WHERE date = {metric_date:Date}
         """
 
@@ -48,10 +48,10 @@ class MetricsRepository:
 
         query = """
         SELECT
-            AVG(started),
-            AVG(completed),
-            AVG(failures)
-        FROM dashboard_data
+            SUM(total_started) / SUM(record_count),
+            SUM(total_completed) / SUM(record_count),
+            SUM(total_failures) / SUM(record_count)
+        FROM dashboard_daily_aggregated
         WHERE date < {metric_date:Date}
         """
 
@@ -86,10 +86,10 @@ class MetricsRepository:
         query = """
         SELECT
             product_name,
-            SUM(started),
-            SUM(completed),
-            SUM(failures)
-        FROM dashboard_data
+            SUM(total_started),
+            SUM(total_completed),
+            SUM(total_failures)
+        FROM dashboard_daily_aggregated
         WHERE date = {metric_date:Date}
         GROUP BY product_name
         """

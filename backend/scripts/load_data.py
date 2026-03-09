@@ -58,6 +58,7 @@ def load_csv_to_clickhouse():
 
     # Clear old data before inserting new data
     client.command("TRUNCATE TABLE IF EXISTS dashboard_data")
+    client.command("TRUNCATE TABLE IF EXISTS dashboard_daily_aggregated")
     print("Table cleared")
 
     client.insert_df("dashboard_data", df)
