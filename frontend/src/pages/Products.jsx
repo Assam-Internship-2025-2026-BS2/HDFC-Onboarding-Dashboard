@@ -17,7 +17,7 @@ export default function Products() {
           <div className="kpi-trend green">+11% vs last year</div>
         </div>
         <div className="kpi-card" style={{ borderTop: "4px solid #22c55e" }}>
-          <div className="kpi-title-row">New Credit Cards</div>
+          <div className="kpi-title-row">Total Conversions</div>
           <div className="kpi-value">124K</div>
           <div className="kpi-trend red">-4.1% vs last month</div>
         </div>
