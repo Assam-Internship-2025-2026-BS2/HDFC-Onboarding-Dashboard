@@ -56,6 +56,10 @@ def load_csv_to_clickhouse():
 
     print("Table verified/created")
 
+    # Clear old data before inserting new data
+    client.command("TRUNCATE TABLE IF EXISTS dashboard_data")
+    print("Table cleared")
+
     client.insert_df("dashboard_data", df)
 
     print("Data inserted into ClickHouse successfully")
