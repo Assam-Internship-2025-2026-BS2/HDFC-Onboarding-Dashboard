@@ -21,8 +21,8 @@ export default function DashboardGraphics({ data }) {
         <div className="panel-header" style={{ marginBottom: '24px', paddingBottom: 0, borderBottom: 'none' }}>
           <h3 style={{ fontSize: '1.15rem', color: '#0f172a', margin: 0 }}>Onboarding Trend Analysis</h3>
         </div>
-        <div style={{ height: '300px', width: '100%' }}>
-          <ResponsiveContainer width="100%" height="100%">
+        <div style={{ height: '300px', width: '100%', minWidth: 0 }}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <AreaChart data={trendData} margin={{ top: 10, right: 10, left: 0, bottom: 15 }}>
               <defs>
                 <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
@@ -66,8 +66,8 @@ export default function DashboardGraphics({ data }) {
         <div className="panel-header" style={{ marginBottom: '24px', paddingBottom: 0, borderBottom: 'none' }}>
           <h3 style={{ fontSize: '1.15rem', color: '#0f172a', margin: 0 }}>Channel Origin</h3>
         </div>
-        <div style={{ height: '300px', width: '100%' }}>
-          <ResponsiveContainer width="100%" height="100%">
+        <div style={{ height: '300px', width: '100%', minWidth: 0 }}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <PieChart>
               <Pie
                 data={channelData}
