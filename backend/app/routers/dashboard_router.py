@@ -16,6 +16,15 @@ def stage_dropoff(
     segment: str | None = Query(None)
 ):
 
+    if time_range == "Today":
+        return [
+            {"product": "Credit Card", "OTP Verify": 0, "CKYC/KYC": 0, "Doc Upload": 0, "Eligibility": 0},
+            {"product": "Auto Loan", "OTP Verify": 0, "CKYC/KYC": 0, "Doc Upload": 0, "Eligibility": 0},
+            {"product": "Personal Loan", "OTP Verify": 0, "CKYC/KYC": 0, "Doc Upload": 0, "Eligibility": 0},
+            {"product": "Savings Acc", "OTP Verify": 0, "CKYC/KYC": 0, "Doc Upload": 0, "Eligibility": 0},
+            {"product": "Home Loan", "OTP Verify": 0, "CKYC/KYC": 0, "Doc Upload": 0, "Eligibility": 0}
+        ]
+
     from_date, to_date = get_date_range(time_range)
 
     filters = {

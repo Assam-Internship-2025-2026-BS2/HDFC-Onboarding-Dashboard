@@ -24,10 +24,7 @@ def get_date_range(time_range):
 
     today = datetime.today().date()
 
-    if time_range == "Today":
-        return today, today
-
-    elif time_range == "Yesterday":
+    if time_range == "Yesterday":
         y = today - timedelta(days=1)
         return y, y
 
@@ -137,6 +134,59 @@ def generate_alerts(client, params):
 
 def fetch_executive_dashboard(time_range, comparison, channel, region, segment):
 
+    if time_range == "Today":
+        return {
+            "overall_health": {
+                "status": "STABLE",
+                "critical_products": 0,
+                "message": "Live production data unavailable for today in mock environment",
+                "alerts": []
+            },
+            "insights": [],
+            "kpi_cards": {
+                "onboarding_started": {
+                    "value": 0,
+                    "trend_percentage": 0,
+                    "trend_direction": "UP",
+                    "submitted": 0,
+                    "in_progress": 0
+                },
+                "onboarding_completed": {
+                    "value": 0,
+                    "trend_percentage": 0,
+                    "trend_direction": "UP",
+                    "conversion_rate": 0,
+                    "approval_rate": 0
+                },
+                "avg_completion_time": {
+                    "value_minutes": 0,
+                    "trend_minutes": 0,
+                    "trend_direction": "UP",
+                    "sla_target_minutes": 0,
+                    "max_product_time_minutes": 0,
+                    "max_product_name": "N/A"
+                },
+                "pipeline_at_risk": {
+                    "amount_cr": 0,
+                    "trend_cr": 0,
+                    "trend_direction": "UP",
+                    "percentage_of_total_pipeline": 0,
+                    "sla_breached": 0,
+                    "stuck_over_24h": 0
+                }
+            },
+            "filters_applied": {
+                "time_range": time_range,
+                "comparison": comparison,
+                "channel": channel,
+                "region": region,
+                "segment": segment
+            },
+            "channel_distribution": [],
+            "trend_data": [],
+            "data_as_of_timestamp": datetime.utcnow()
+        }
+
     client = get_clickhouse_client()
 
     from_date, to_date = get_date_range(time_range)
@@ -243,10 +293,10 @@ def fetch_executive_dashboard(time_range, comparison, channel, region, segment):
             },
 
             "avg_completion_time": {
-                "value_minutes": round(avg_time, 2),
+                "value_minutes": round(avg_time, 2) if avg_time else 0,
                 "trend_minutes": time_trend,
                 "trend_direction": time_dir,
-                "sla_target_minutes": round(sla_target, 2),
+                "sla_target_minutes": round(sla_target, 2) if sla_target else 0,
                 "max_product_time_minutes": round(max_product_row[1], 2),
                 "max_product_name": max_product_row[0]
             },
