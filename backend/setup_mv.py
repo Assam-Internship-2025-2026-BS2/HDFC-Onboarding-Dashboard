@@ -45,6 +45,11 @@ GROUP BY date, product_name, channel, region, segment
 print("Truncating target table to avoid duplicates during backfill.")
 client.command("TRUNCATE TABLE IF EXISTS dashboard_daily_aggregated")
 
+result = client.command("EXISTS TABLE dashboard_data")
+if not result:
+    print("❌ dashboard_data table not found. Run load_data.py first!")
+    sys.exit(1)
+
 print("Backfilling Data...")
 client.command("""
 INSERT INTO dashboard_daily_aggregated

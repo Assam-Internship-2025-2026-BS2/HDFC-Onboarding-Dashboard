@@ -4,12 +4,23 @@ from pathlib import Path
 # Add the backend directory to sys.path so the 'app' module can be imported
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
-
+from app.core.database import get_clickhouse_client
 import pandas as pd  # noqa: E402
-from app.core.database import get_clickhouse_client  # noqa: E402
+import clickhouse_connect  # noqa: E402
+from app.core.config import settings  # noqa: E402
 
 
 def load_csv_to_clickhouse():
+
+    # Create database if it doesn't exist
+    temp_client = clickhouse_connect.get_client(
+        host=settings.CLICKHOUSE_HOST,
+        port=settings.CLICKHOUSE_PORT,
+        username=settings.CLICKHOUSE_USER,
+        password=settings.CLICKHOUSE_PASSWORD,
+    )
+    temp_client.command(f"CREATE DATABASE IF NOT EXISTS {settings.CLICKHOUSE_DB}")
+    temp_client.close()
 
     client = get_clickhouse_client()
 
@@ -67,4 +78,4 @@ def load_csv_to_clickhouse():
 
 
 if __name__ == "__main__":
-    load_csv_to_clickhouse()
+    load_csv_to_clickhouse()
