@@ -19,6 +19,13 @@ The project follows a modern decoupled architecture where the Frontend acts as a
 
 ---
 
+## Notable Architecture & UI Features
+
+- **Mock Environment Constraint (`Today` Filter):** To faithfully emulate a real-world enterprise mock, selecting the `Today` time range intentionally returns `0` for all metrics. This explicitly demonstrates the absence of real-time production data streaming, rendering a zeroed-out dashboard layout with a `STABLE` system status message of *"Live production data unavailable for today in mock environment"*.
+- **Responsive Chart Visualizations:** The Recharts integration throughout `<DashboardGraphics />`, `<Analysis />`, and embedded KPI sparklines utilize strict `minWidth={0}` and `minHeight={0}` constraints, enforcing graceful Flexbox resizing and eliminating standard Recharts DOM dimension warnings.
+
+---
+
 ## Directory Structure & Core Logic
 
 ### Frontend (`/frontend`)
@@ -35,7 +42,7 @@ Powered by **React** and **Vite**.
 Powered by Python **FastAPI**.
 - **`app/routers/`**: Exposed API endpoints mirroring physical URLs (`executive_router.py`).
 - **`app/services/` (The Core Logic Engine)**: 
-  - `executive_service.py`: Computes trend directions (UP/DOWN), converts text inputs like "Last 7 Days" into actual Python `timedelta` ranges, evaluates SLA thresholds, and combines multiple SQL outputs into a singular JSON master format.
+  - `executive_service.py`: Computes trend directions (UP/DOWN), converts text inputs like "Last 7 Days" into actual Python `timedelta` ranges, evaluates SLA thresholds, and combines multiple SQL outputs into a singular JSON master format. Intercepts the `Today` filter directly.
   - `stage_dropoff_service.py`: Handles pure mathematical drop-off mapping. 
 - **`app/queries/dashboard_queries.py`**: The raw ClickHouse execution strings containing rigorous `SUM()`, `AVG()`, and `GROUP BY` logic isolated for execution.
 - **`app/schemas/executive_schema.py`**: Pydantic Type-safety files. If a python variable isn't whitelisted here (e.g., `trend_data: List[Dict]`), FastAPI will instantly drop it from the final React delivery package.
@@ -66,10 +73,11 @@ Install the core Python packages:
 pip install -r requirements.txt
 ```
 
-Generate the Database Schema and load the mock algorithm rows:
+Generate the Database Schema, load the mock algorithm rows, and build the materialized views. Note: this script regenerates the dataset backward from the exact moment of execution:
 ```bash
 python scripts/generate_large_data.py
 python scripts/load_data.py
+python setup_mv.py
 ```
 
 Run the API Node Development Server:
