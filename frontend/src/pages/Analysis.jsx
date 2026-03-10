@@ -129,8 +129,8 @@ export default function Analysis() {
           <div className="panel-header" style={{marginBottom: "20px"}}>
             <h3>Funnel Drop-off Volume ({product})</h3>
           </div>
-          <ResponsiveContainer width="100%" height="85%">
-            <BarChart data={activeData.funnel} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+          <ResponsiveContainer width="100%" height="85%" minWidth={0} minHeight={0}>
+            <BarChart data={activeData.funnel} margin={{ top: 20, right: 30, left: 20, bottom: 5 }} minWidth={0} minHeight={0}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} />
               <YAxis axisLine={false} tickLine={false} />
@@ -145,8 +145,8 @@ export default function Analysis() {
           <div className="panel-header" style={{marginBottom: "20px"}}>
             <h3>6-Month Performance Trend</h3>
           </div>
-          <ResponsiveContainer width="100%" height="85%">
-            <AreaChart data={activeData.trend} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+          <ResponsiveContainer width="100%" height="85%" minWidth={0} minHeight={0}>
+            <AreaChart data={activeData.trend} margin={{ top: 20, right: 30, left: 0, bottom: 5 }} minWidth={0} minHeight={0}>
               <defs>
                 <linearGradient id="colorConv" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
@@ -174,8 +174,8 @@ export default function Analysis() {
             <h3>Acquisition Channel Distribution</h3>
           </div>
           <div style={{display: 'flex', width: '100%', height: '80%'}}>
-            <ResponsiveContainer width="50%" height="100%">
-              <PieChart>
+            <ResponsiveContainer width="50%" height="100%" minWidth={0} minHeight={0}>
+              <PieChart minWidth={0} minHeight={0}>
                 <Pie
                   data={activeData.channels}
                   cx="50%"

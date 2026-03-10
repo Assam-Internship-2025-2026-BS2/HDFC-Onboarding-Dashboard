@@ -52,9 +52,9 @@ export default function KPITile({
         {trendSign}{trend}% <span className="kpi-trend-text">{trendText}</span>
       </div>
 
-      <div className="kpi-sparkline">
-        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-          <AreaChart data={sparklineData}>
+      <div className="kpi-sparkline" style={{ minWidth: 0, minHeight: 0 }}>
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+          <AreaChart data={sparklineData} minWidth={0} minHeight={0}>
              <defs>
               <linearGradient id={`colorUv-${title.replace(/\s+/g, '')}`} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor={sparklineColor} stopOpacity={0.3}/>
