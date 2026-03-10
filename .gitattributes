@@ -1,0 +1,10 @@
+# Handle line endings automatically for text files
+* text=auto
+
+# Force LF for shell scripts (crucial for Docker/Linux)
+*.sh text eol=lf
+
+# Force LF for python and js files to keep diffs clean
+*.py text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
