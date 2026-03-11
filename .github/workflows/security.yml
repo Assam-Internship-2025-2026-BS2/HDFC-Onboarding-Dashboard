@@ -1,0 +1,235 @@
+name: Security & QA
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+
+  # JOB 1: Gitleaks — Scan for hardcoded secrets in code/history
+
+  gitleaks:
+    name: Gitleaks Secret Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so gitleaks scans all commits
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Fails the job automatically if secrets are found
+        # Results shown directly in GitHub Actions log
+
+
+  # JOB 2: Trivy Image Scan — CVEs in Docker image
+
+  trivy-image:
+    name: Trivy Image Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Pull latest backend image from ECR
+        run: |
+          docker pull \
+            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:backend-latest
+
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: >-
+            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:backend-latest
+          format: table
+          exit-code: '1'          # fail pipeline on HIGH/CRITICAL CVEs
+          ignore-unfixed: true    # ignore CVEs with no available fix
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          output: trivy-image-report.txt
+
+      - name: Upload image scan report
+        uses: actions/upload-artifact@v4
+        if: always() # upload even if scan fails
+        with:
+          name: trivy-image-report
+          path: trivy-image-report.txt
+          retention-days: 7
+
+ 
+  # JOB 3: Trivy Filesystem Scan — vulnerabilities in source code
+ 
+  trivy-filesystem:
+    name: Trivy Filesystem Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          scanners: vuln,secret,misconfig  # vulns + secrets + misconfigs
+          output: trivy-fs-report.txt
+
+      - name: Upload filesystem scan report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-filesystem-report
+          path: trivy-fs-report.txt
+          retention-days: 7
+
+  
+  # JOB 4: SonarQube Community — code quality + security analysis
+  
+  sonarqube:
+    name: SonarQube Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for better blame/annotation
+
+     
+      - name: Start SonarQube Community
+        run: |
+          docker run -d \
+            --name sonarqube \
+            -p 9000:9000 \
+            -e SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true \
+            sonarqube:community
+
+          echo "Waiting for SonarQube to be ready..."
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              http://localhost:9000/api/system/status || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              HEALTH=$(curl -s http://localhost:9000/api/system/status \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")
+              if [ "$HEALTH" = "UP" ]; then
+                echo "✅ SonarQube is UP"
+                break
+              fi
+            fi
+            echo "Attempt $i/30 — waiting 10s..."
+            sleep 10
+          done
+
+      
+      - name: Generate SonarQube token
+        id: sonar-token
+        run: |
+          TOKEN=$(curl -s -u admin:admin -X POST \
+            "http://localhost:9000/api/user_tokens/generate" \
+            -d "name=github-actions-$(date +%s)" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+          echo "::add-mask::$TOKEN"  # mask token from logs
+
+      # ── Install sonar-scanner CLI ──
+      - name: Install Sonar Scanner
+        run: |
+          wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.1.0.4477-linux-x64.zip
+          unzip -q sonar-scanner-cli-6.1.0.4477-linux-x64.zip
+          echo "$(pwd)/sonar-scanner-6.1.0.4477-linux-x64/bin" >> $GITHUB_PATH
+
+      # ── Install Python deps for better analysis ──
+      - name: Install Python dependencies
+        run: |
+          pip install -r backend/requirements.txt --break-system-packages || true
+
+      # ── Run the analysis ──
+      - name: Run SonarQube analysis
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=hdfc-onboarding-dashboard \
+            -Dsonar.projectName="HDFC Onboarding Dashboard" \
+            -Dsonar.sources=backend,frontend/src \
+            -Dsonar.exclusions="**/node_modules/**,**/dist/**,**/__pycache__/**" \
+            -Dsonar.host.url=http://localhost:9000 \
+            -Dsonar.token=${{ steps.sonar-token.outputs.token }} \
+            -Dsonar.python.version=3
+
+      # ── Wait for analysis and check Quality Gate ──
+      - name: Check SonarQube Quality Gate
+        run: |
+          echo "Waiting for analysis to process..."
+          sleep 15
+
+          QG=$(curl -s -u admin:admin \
+            "http://localhost:9000/api/qualitygates/project_status?projectKey=hdfc-onboarding-dashboard" \
+            | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          status = data.get('projectStatus', {}).get('status', 'UNKNOWN')
+          print(status)
+          ")
+
+          echo "Quality Gate status: $QG"
+
+          if [ "$QG" = "ERROR" ]; then
+            echo "❌ Quality Gate FAILED — fix issues before merging"
+            exit 1
+          elif [ "$QG" = "OK" ]; then
+            echo "✅ Quality Gate PASSED"
+          else
+            echo "⚠️ Quality Gate status: $QG"
+          fi
+
+      # ── Export issues report as artifact ──
+      - name: Export SonarQube issues report
+        if: always()
+        run: |
+          curl -s -u admin:admin \
+            "http://localhost:9000/api/issues/search?projectKeys=hdfc-onboarding-dashboard&severities=CRITICAL,MAJOR&resolved=false" \
+            | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          issues = data.get('issues', [])
+          print(f'Total unresolved CRITICAL/MAJOR issues: {len(issues)}')
+          print('-' * 60)
+          for i in issues:
+              print(f\"[{i['severity']}] {i['message']}\")
+              print(f\"  File: {i['component']} — Line: {i.get('line','?')}\")
+              print()
+          " > sonar-issues-report.txt
+          cat sonar-issues-report.txt
+
+      - name: Upload SonarQube report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sonarqube-issues-report
+          path: sonar-issues-report.txt
+          retention-days: 7
