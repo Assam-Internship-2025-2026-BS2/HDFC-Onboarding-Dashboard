@@ -66,17 +66,9 @@ jobs:
             echo "└──────────────────────────────────────────┘"
           fi
 
-      - name: Upload Gitleaks report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: gitleaks-report
-          path: gitleaks-report.json
-          retention-days: 30
-
-  # =============================================================
+  
   # JOB 2: Trivy Image Scan — CVEs in Docker image
-  # =============================================================
+  
   trivy-image:
     name: Trivy Image Scan
     runs-on: ubuntu-latest
@@ -132,17 +124,10 @@ jobs:
           printf "│  %-20s %-19s│\n" "HIGH CVEs:"     "$HIGH"
           echo "└──────────────────────────────────────────┘"
 
-      - name: Upload image scan report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: trivy-image-report
-          path: trivy-image-report.txt
-          retention-days: 30
 
-  # =============================================================
+
   # JOB 3: Trivy Filesystem Scan — vulnerabilities in source code
-  # =============================================================
+
   trivy-filesystem:
     name: Trivy Filesystem Scan
     runs-on: ubuntu-latest
@@ -188,17 +173,9 @@ jobs:
           printf "│  %-20s %-19s│\n" "Misconfigurations:"  "$MISCONFIG"
           echo "└──────────────────────────────────────────┘"
 
-      - name: Upload filesystem scan report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: trivy-filesystem-report
-          path: trivy-fs-report.txt
-          retention-days: 30
 
-  # =============================================================
   # JOB 4: SonarQube Community — code quality + security analysis
-  # =============================================================
+
   sonarqube:
     name: SonarQube Analysis
     runs-on: ubuntu-latest
@@ -352,11 +329,3 @@ jobs:
             echo ""
             echo "$ISSUES"
           } > sonar-issues-report.txt
-
-      - name: Upload SonarQube report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: sonarqube-issues-report
-          path: sonar-issues-report.txt
-          retention-days: 30
