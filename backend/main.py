@@ -103,4 +103,4 @@ def health():
         # when ClickHouse is down
         return JSONResponse(status_code=503, content=health_status)
 
-    return JSONResponse(status_code=200, content=health_status)
+    return JSONResponse(status_code=200, content=health_status)# test
