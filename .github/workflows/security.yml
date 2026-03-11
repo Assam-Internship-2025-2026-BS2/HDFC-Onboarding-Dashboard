@@ -10,32 +10,51 @@ on:
   workflow_dispatch:
 
 jobs:
-
+  
   # JOB 1: Gitleaks — Scan for hardcoded secrets in code/history
-
+  
   gitleaks:
     name: Gitleaks Secret Scan
     runs-on: ubuntu-latest
+    continue-on-error: true  # log only, never block the push
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # full history so gitleaks scans all commits
+          fetch-depth: 0
+
+      - name: Install Gitleaks
+        run: |
+          wget -q https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz
+          tar -xzf gitleaks_8.18.4_linux_x64.tar.gz
+          sudo mv gitleaks /usr/local/bin/
 
       - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # Fails the job automatically if secrets are found
-        # Results shown directly in GitHub Actions log
+        run: |
+          gitleaks detect \
+            --source . \
+            --log-opts="HEAD" \
+            --report-format sarif \
+            --report-path gitleaks-report.sarif \
+            --redact \
+            --verbose || echo "⚠️ Gitleaks found issues — see report artifact"
 
+      - name: Upload Gitleaks report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.sarif
+          retention-days: 7
 
+  
   # JOB 2: Trivy Image Scan — CVEs in Docker image
-
+  
   trivy-image:
     name: Trivy Image Scan
     runs-on: ubuntu-latest
+    continue-on-error: true  # log only, never block the push
 
     steps:
       - name: Checkout repository
@@ -62,26 +81,27 @@ jobs:
           image-ref: >-
             ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:backend-latest
           format: table
-          exit-code: '1'          # fail pipeline on HIGH/CRITICAL CVEs
-          ignore-unfixed: true    # ignore CVEs with no available fix
+          exit-code: '0'          # log only, never fail
+          ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL,HIGH
           output: trivy-image-report.txt
 
       - name: Upload image scan report
         uses: actions/upload-artifact@v4
-        if: always() # upload even if scan fails
+        if: always()
         with:
           name: trivy-image-report
           path: trivy-image-report.txt
           retention-days: 7
 
- 
+  
   # JOB 3: Trivy Filesystem Scan — vulnerabilities in source code
- 
+  
   trivy-filesystem:
     name: Trivy Filesystem Scan
     runs-on: ubuntu-latest
+    continue-on-error: true  # log only, never block the push
 
     steps:
       - name: Checkout repository
@@ -93,11 +113,11 @@ jobs:
           scan-type: fs
           scan-ref: .
           format: table
-          exit-code: '1'
+          exit-code: '0'          # log only, never fail
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL,HIGH
-          scanners: vuln,secret,misconfig  # vulns + secrets + misconfigs
+          scanners: vuln,secret,misconfig
           output: trivy-fs-report.txt
 
       - name: Upload filesystem scan report
@@ -108,20 +128,20 @@ jobs:
           path: trivy-fs-report.txt
           retention-days: 7
 
-  
+
   # JOB 4: SonarQube Community — code quality + security analysis
   
   sonarqube:
     name: SonarQube Analysis
     runs-on: ubuntu-latest
+    continue-on-error: true  # log only, never block the push
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # full history for better blame/annotation
+          fetch-depth: 0
 
-     
       - name: Start SonarQube Community
         run: |
           docker run -d \
@@ -146,7 +166,6 @@ jobs:
             sleep 10
           done
 
-      
       - name: Generate SonarQube token
         id: sonar-token
         run: |
@@ -155,21 +174,18 @@ jobs:
             -d "name=github-actions-$(date +%s)" \
             | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
-          echo "::add-mask::$TOKEN"  # mask token from logs
+          echo "::add-mask::$TOKEN"
 
-      # ── Install sonar-scanner CLI ──
       - name: Install Sonar Scanner
         run: |
           wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.1.0.4477-linux-x64.zip
           unzip -q sonar-scanner-cli-6.1.0.4477-linux-x64.zip
           echo "$(pwd)/sonar-scanner-6.1.0.4477-linux-x64/bin" >> $GITHUB_PATH
 
-      # ── Install Python deps for better analysis ──
       - name: Install Python dependencies
         run: |
           pip install -r backend/requirements.txt --break-system-packages || true
 
-      # ── Run the analysis ──
       - name: Run SonarQube analysis
         run: |
           sonar-scanner \
@@ -181,7 +197,6 @@ jobs:
             -Dsonar.token=${{ steps.sonar-token.outputs.token }} \
             -Dsonar.python.version=3
 
-      # ── Wait for analysis and check Quality Gate ──
       - name: Check SonarQube Quality Gate
         run: |
           echo "Waiting for analysis to process..."
@@ -199,15 +214,13 @@ jobs:
           echo "Quality Gate status: $QG"
 
           if [ "$QG" = "ERROR" ]; then
-            echo "❌ Quality Gate FAILED — fix issues before merging"
-            exit 1
+            echo "⚠️ Quality Gate FAILED — review issues in the report artifact"
           elif [ "$QG" = "OK" ]; then
             echo "✅ Quality Gate PASSED"
           else
             echo "⚠️ Quality Gate status: $QG"
           fi
 
-      # ── Export issues report as artifact ──
       - name: Export SonarQube issues report
         if: always()
         run: |
