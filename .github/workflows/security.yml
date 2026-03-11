@@ -16,45 +16,71 @@ jobs:
   gitleaks:
     name: Gitleaks Secret Scan
     runs-on: ubuntu-latest
-    continue-on-error: true  # log only, never block the push
+    continue-on-error: true  # advisory — never blocks deployments
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # full history scan
 
       - name: Install Gitleaks
         run: |
           wget -q https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz
           tar -xzf gitleaks_8.18.4_linux_x64.tar.gz
           sudo mv gitleaks /usr/local/bin/
+          gitleaks version
 
-      - name: Run Gitleaks
+      - name: Run Gitleaks and print table to log
         run: |
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║                GITLEAKS SECRET SCAN REPORT                  ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo ""
+
+          # Run with verbose output to stdout so it appears in runner log
           gitleaks detect \
             --source . \
             --log-opts="HEAD" \
-            --report-format sarif \
-            --report-path gitleaks-report.sarif \
             --redact \
-            --verbose || echo "⚠️ Gitleaks found issues — see report artifact"
+            --verbose \
+            --no-color 2>&1 | tee gitleaks-output.txt || GITLEAKS_EXIT=$?
+
+          # Save JSON report as artifact
+          gitleaks detect \
+            --source . \
+            --log-opts="HEAD" \
+            --redact \
+            --report-format json \
+            --report-path gitleaks-report.json 2>/dev/null || true
+
+          echo ""
+          if [ "${GITLEAKS_EXIT:-0}" != "0" ]; then
+            echo "┌──────────────────────────────────────────┐"
+            echo "│  ⚠️  SECRETS FOUND — Review required     │"
+            echo "└──────────────────────────────────────────┘"
+          else
+            echo "┌──────────────────────────────────────────┐"
+            echo "│  ✅  No secrets detected                 │"
+            echo "└──────────────────────────────────────────┘"
+          fi
 
       - name: Upload Gitleaks report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: gitleaks-report
-          path: gitleaks-report.sarif
-          retention-days: 7
+          path: gitleaks-report.json
+          retention-days: 30
 
-  
+  # =============================================================
   # JOB 2: Trivy Image Scan — CVEs in Docker image
-  
+  # =============================================================
   trivy-image:
     name: Trivy Image Scan
     runs-on: ubuntu-latest
-    continue-on-error: true  # log only, never block the push
+    continue-on-error: true  # advisory — never blocks deployments
 
     steps:
       - name: Checkout repository
@@ -75,17 +101,36 @@ jobs:
           docker pull \
             ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:backend-latest
 
-      - name: Run Trivy image scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: >-
-            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:backend-latest
-          format: table
-          exit-code: '0'          # log only, never fail
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: CRITICAL,HIGH
-          output: trivy-image-report.txt
+      - name: Run Trivy image scan — print table to log
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║                 TRIVY IMAGE SCAN REPORT                     ║"
+          echo "║   Scope : CRITICAL & HIGH CVEs (with fixes available)       ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo ""
+
+          # Print table to stdout — visible directly in runner log
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --format table \
+            --exit-code 0 \
+            --ignore-unfixed \
+            --vuln-type os,library \
+            --severity CRITICAL,HIGH \
+            --no-progress \
+            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:backend-latest \
+            2>&1 | tee trivy-image-report.txt
+
+          echo ""
+          CRITICAL=$(grep -c "CRITICAL" trivy-image-report.txt 2>/dev/null || echo "0")
+          HIGH=$(grep -c "HIGH" trivy-image-report.txt 2>/dev/null || echo "0")
+          echo "┌──────────────────────────────────────────┐"
+          echo "│  IMAGE SCAN SUMMARY                      │"
+          printf "│  %-20s %-19s│\n" "CRITICAL CVEs:" "$CRITICAL"
+          printf "│  %-20s %-19s│\n" "HIGH CVEs:"     "$HIGH"
+          echo "└──────────────────────────────────────────┘"
 
       - name: Upload image scan report
         uses: actions/upload-artifact@v4
@@ -93,32 +138,55 @@ jobs:
         with:
           name: trivy-image-report
           path: trivy-image-report.txt
-          retention-days: 7
+          retention-days: 30
 
-  
+  # =============================================================
   # JOB 3: Trivy Filesystem Scan — vulnerabilities in source code
-  
+  # =============================================================
   trivy-filesystem:
     name: Trivy Filesystem Scan
     runs-on: ubuntu-latest
-    continue-on-error: true  # log only, never block the push
+    continue-on-error: true  # advisory — never blocks deployments
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: fs
-          scan-ref: .
-          format: table
-          exit-code: '0'          # log only, never fail
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: CRITICAL,HIGH
-          scanners: vuln,secret,misconfig
-          output: trivy-fs-report.txt
+      - name: Run Trivy filesystem scan — print table to log
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║               TRIVY FILESYSTEM SCAN REPORT                  ║"
+          echo "║   Scope : Vulns + Secrets + Misconfigs (CRITICAL & HIGH)    ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo ""
+
+          # Print table to stdout — visible directly in runner log
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            aquasec/trivy:latest fs \
+            --format table \
+            --exit-code 0 \
+            --ignore-unfixed \
+            --vuln-type os,library \
+            --severity CRITICAL,HIGH \
+            --scanners vuln,secret,misconfig \
+            --no-progress \
+            /workspace \
+            2>&1 | tee trivy-fs-report.txt
+
+          echo ""
+          CRITICAL=$(grep -c "CRITICAL" trivy-fs-report.txt 2>/dev/null || echo "0")
+          HIGH=$(grep -c "HIGH" trivy-fs-report.txt 2>/dev/null || echo "0")
+          SECRETS=$(grep -c "SECRET" trivy-fs-report.txt 2>/dev/null || echo "0")
+          MISCONFIG=$(grep -c "MISCONF" trivy-fs-report.txt 2>/dev/null || echo "0")
+          echo "┌──────────────────────────────────────────┐"
+          echo "│  FILESYSTEM SCAN SUMMARY                 │"
+          printf "│  %-20s %-19s│\n" "CRITICAL CVEs:"      "$CRITICAL"
+          printf "│  %-20s %-19s│\n" "HIGH CVEs:"          "$HIGH"
+          printf "│  %-20s %-19s│\n" "Secrets found:"      "$SECRETS"
+          printf "│  %-20s %-19s│\n" "Misconfigurations:"  "$MISCONFIG"
+          echo "└──────────────────────────────────────────┘"
 
       - name: Upload filesystem scan report
         uses: actions/upload-artifact@v4
@@ -126,15 +194,15 @@ jobs:
         with:
           name: trivy-filesystem-report
           path: trivy-fs-report.txt
-          retention-days: 7
+          retention-days: 30
 
-
+  # =============================================================
   # JOB 4: SonarQube Community — code quality + security analysis
-  
+  # =============================================================
   sonarqube:
     name: SonarQube Analysis
     runs-on: ubuntu-latest
-    continue-on-error: true  # log only, never block the push
+    continue-on-error: true  # advisory — never blocks deployments
 
     steps:
       - name: Checkout repository
@@ -197,47 +265,93 @@ jobs:
             -Dsonar.token=${{ steps.sonar-token.outputs.token }} \
             -Dsonar.python.version=3
 
-      - name: Check SonarQube Quality Gate
+      - name: Print SonarQube results table to log
+        if: always()
         run: |
-          echo "Waiting for analysis to process..."
-          sleep 15
+          echo "Waiting for analysis to complete..."
+          sleep 20
 
+          # Fetch quality gate
           QG=$(curl -s -u admin:admin \
             "http://localhost:9000/api/qualitygates/project_status?projectKey=hdfc-onboarding-dashboard" \
             | python3 -c "
           import sys, json
           data = json.load(sys.stdin)
-          status = data.get('projectStatus', {}).get('status', 'UNKNOWN')
-          print(status)
+          print(data.get('projectStatus', {}).get('status', 'UNKNOWN'))
           ")
 
-          echo "Quality Gate status: $QG"
+          # Fetch severity counts
+          COUNTS=$(curl -s -u admin:admin \
+            "http://localhost:9000/api/issues/search?projectKeys=hdfc-onboarding-dashboard&resolved=false&facets=severities" \
+            | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          facets = {f['property']: f['values'] for f in data.get('facets', [])}
+          severities = {v['val']: v['count'] for v in facets.get('severities', [])}
+          print(severities.get('CRITICAL', 0))
+          print(severities.get('MAJOR', 0))
+          print(severities.get('MINOR', 0))
+          print(severities.get('INFO', 0))
+          print(data.get('total', 0))
+          ")
 
-          if [ "$QG" = "ERROR" ]; then
-            echo "⚠️ Quality Gate FAILED — review issues in the report artifact"
-          elif [ "$QG" = "OK" ]; then
-            echo "✅ Quality Gate PASSED"
-          else
-            echo "⚠️ Quality Gate status: $QG"
-          fi
+          CRITICAL=$(echo "$COUNTS" | sed -n '1p')
+          MAJOR=$(echo "$COUNTS"    | sed -n '2p')
+          MINOR=$(echo "$COUNTS"    | sed -n '3p')
+          INFO=$(echo "$COUNTS"     | sed -n '4p')
+          TOTAL=$(echo "$COUNTS"    | sed -n '5p')
 
-      - name: Export SonarQube issues report
-        if: always()
-        run: |
-          curl -s -u admin:admin \
-            "http://localhost:9000/api/issues/search?projectKeys=hdfc-onboarding-dashboard&severities=CRITICAL,MAJOR&resolved=false" \
+          # Fetch top CRITICAL/MAJOR issues for detail table
+          ISSUES=$(curl -s -u admin:admin \
+            "http://localhost:9000/api/issues/search?projectKeys=hdfc-onboarding-dashboard&severities=CRITICAL,MAJOR&resolved=false&ps=20" \
             | python3 -c "
           import sys, json
           data = json.load(sys.stdin)
           issues = data.get('issues', [])
-          print(f'Total unresolved CRITICAL/MAJOR issues: {len(issues)}')
-          print('-' * 60)
-          for i in issues:
-              print(f\"[{i['severity']}] {i['message']}\")
-              print(f\"  File: {i['component']} — Line: {i.get('line','?')}\")
-              print()
-          " > sonar-issues-report.txt
-          cat sonar-issues-report.txt
+          if not issues:
+              print('  ✅ No CRITICAL or MAJOR issues found.')
+          else:
+              header = f\"{'SEVERITY':<12} {'TYPE':<20} {'FILE':<35} {'LINE':<6} MESSAGE\"
+              print(header)
+              print('-' * 110)
+              for i in issues:
+                  comp = i.get('component','').split(':')[-1][-35:]
+                  msg  = i.get('message','')[:55]
+                  line = str(i.get('line','?'))
+                  print(f\"{i.get('severity',''):<12} {i.get('type',''):<20} {comp:<35} {line:<6} {msg}\")
+          ")
+
+          # Print full report to runner log
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║                SONARQUBE ANALYSIS REPORT                    ║"
+          echo "╠══════════════════════════════════════════════════════════════╣"
+          if [ "$QG" = "OK" ]; then
+            echo "║  Quality Gate : ✅  PASSED                                  ║"
+          else
+            echo "║  Quality Gate : ⚠️  $QG                                     ║"
+          fi
+          echo "╠══════════════════════════════════════════════════════════════╣"
+          echo "║  ISSUE SUMMARY                                               ║"
+          printf "║  %-20s %-39s║\n" "CRITICAL:"  "$CRITICAL"
+          printf "║  %-20s %-39s║\n" "MAJOR:"     "$MAJOR"
+          printf "║  %-20s %-39s║\n" "MINOR:"     "$MINOR"
+          printf "║  %-20s %-39s║\n" "INFO:"      "$INFO"
+          printf "║  %-20s %-39s║\n" "TOTAL:"     "$TOTAL"
+          echo "╠══════════════════════════════════════════════════════════════╣"
+          echo "║  CRITICAL & MAJOR ISSUES DETAIL                              ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "$ISSUES"
+          echo ""
+
+          # Save same output as artifact
+          {
+            echo "Quality Gate: $QG"
+            echo "CRITICAL: $CRITICAL | MAJOR: $MAJOR | MINOR: $MINOR | INFO: $INFO | TOTAL: $TOTAL"
+            echo ""
+            echo "$ISSUES"
+          } > sonar-issues-report.txt
 
       - name: Upload SonarQube report
         uses: actions/upload-artifact@v4
@@ -245,4 +359,4 @@ jobs:
         with:
           name: sonarqube-issues-report
           path: sonar-issues-report.txt
-          retention-days: 7
+          retention-days: 30
