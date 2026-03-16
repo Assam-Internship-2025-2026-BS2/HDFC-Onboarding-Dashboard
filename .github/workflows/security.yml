@@ -16,7 +16,7 @@ jobs:
   gitleaks:
     name: Gitleaks Secret Scan
     runs-on: ubuntu-latest
-    continue-on-error: true  # advisory — never blocks deployments
+    continue-on-error: true  # advisory
 
     steps:
       - name: Checkout repository
@@ -58,11 +58,11 @@ jobs:
           echo ""
           if [ "${GITLEAKS_EXIT:-0}" != "0" ]; then
             echo "┌──────────────────────────────────────────┐"
-            echo "│  ⚠️  SECRETS FOUND — Review required     │"
+            echo "│    SECRETS FOUND — Review required     │"
             echo "└──────────────────────────────────────────┘"
           else
             echo "┌──────────────────────────────────────────┐"
-            echo "│  ✅  No secrets detected                 │"
+            echo "│    No secrets detected                 │"
             echo "└──────────────────────────────────────────┘"
           fi
 
@@ -72,7 +72,7 @@ jobs:
   trivy-image:
     name: Trivy Image Scan
     runs-on: ubuntu-latest
-    continue-on-error: true  # advisory — never blocks deployments
+    continue-on-error: true  # advisory
 
     steps:
       - name: Checkout repository
@@ -131,7 +131,7 @@ jobs:
   trivy-filesystem:
     name: Trivy Filesystem Scan
     runs-on: ubuntu-latest
-    continue-on-error: true  # advisory — never blocks deployments
+    continue-on-error: true  # advisory
 
     steps:
       - name: Checkout repository
@@ -179,7 +179,7 @@ jobs:
   sonarqube:
     name: SonarQube Analysis
     runs-on: ubuntu-latest
-    continue-on-error: true  # advisory — never blocks deployments
+    continue-on-error: true  # advisory
 
     steps:
       - name: Checkout repository
@@ -203,7 +203,7 @@ jobs:
               HEALTH=$(curl -s http://localhost:9000/api/system/status \
                 | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")
               if [ "$HEALTH" = "UP" ]; then
-                echo "✅ SonarQube is UP"
+                echo "SonarQube is UP"
                 break
               fi
             fi
@@ -286,7 +286,7 @@ jobs:
           data = json.load(sys.stdin)
           issues = data.get('issues', [])
           if not issues:
-              print('  ✅ No CRITICAL or MAJOR issues found.')
+              print('No CRITICAL or MAJOR issues found.')
           else:
               header = f\"{'SEVERITY':<12} {'TYPE':<20} {'FILE':<35} {'LINE':<6} MESSAGE\"
               print(header)
@@ -304,9 +304,9 @@ jobs:
           echo "║                SONARQUBE ANALYSIS REPORT                    ║"
           echo "╠══════════════════════════════════════════════════════════════╣"
           if [ "$QG" = "OK" ]; then
-            echo "║  Quality Gate : ✅  PASSED                                  ║"
+            echo "║  Quality Gate :  PASSED                                  ║"
           else
-            echo "║  Quality Gate : ⚠️  $QG                                     ║"
+            echo "║  Quality Gate :  $QG                                     ║"
           fi
           echo "╠══════════════════════════════════════════════════════════════╣"
           echo "║  ISSUE SUMMARY                                               ║"
