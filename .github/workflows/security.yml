@@ -10,9 +10,11 @@ on:
   workflow_dispatch:
 
 jobs:
+
   
   # JOB 1: Gitleaks — Scan for hardcoded secrets in code/history
-  
+
+
   gitleaks:
     name: Gitleaks Secret Scan
     runs-on: ubuntu-latest
@@ -31,23 +33,43 @@ jobs:
           sudo mv gitleaks /usr/local/bin/
           gitleaks version
 
-      - name: Run Gitleaks and print table to log
+      - name: Run Gitleaks — print to log and save text report
         run: |
-          echo ""
-          echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║                GITLEAKS SECRET SCAN REPORT                  ║"
-          echo "╚══════════════════════════════════════════════════════════════╝"
-          echo ""
+          # Write banner to text report and stdout simultaneously
+          {
+            echo ""
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "║                GITLEAKS SECRET SCAN REPORT                  ║"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            echo ""
+          } | tee gitleaks-summary.txt
 
-          # Run with verbose output to stdout so it appears in runner log
+          # Run verbose scan — stream to stdout and append to text report
           gitleaks detect \
             --source . \
             --log-opts="HEAD" \
             --redact \
             --verbose \
-            --no-color 2>&1 | tee gitleaks-output.txt || GITLEAKS_EXIT=$?
+            --no-color 2>&1 | tee -a gitleaks-summary.txt || GITLEAKS_EXIT=$?
 
-          # Save JSON report as artifact
+          # Append result box to text report and stdout
+          {
+            echo ""
+            if [ "${GITLEAKS_EXIT:-0}" != "0" ]; then
+              echo "┌──────────────────────────────────────────┐"
+              echo "│    SECRETS FOUND — Review required       │"
+              echo "└──────────────────────────────────────────┘"
+            else
+              echo "┌──────────────────────────────────────────┐"
+              echo "│    No secrets detected                   │"
+              echo "└──────────────────────────────────────────┘"
+            fi
+          } | tee -a gitleaks-summary.txt
+
+      - name: Generate Gitleaks JSON report
+        if: always()
+        run: |
+          # Produce raw JSON from gitleaks
           gitleaks detect \
             --source . \
             --log-opts="HEAD" \
@@ -55,20 +77,51 @@ jobs:
             --report-format json \
             --report-path gitleaks-report.json 2>/dev/null || true
 
-          echo ""
-          if [ "${GITLEAKS_EXIT:-0}" != "0" ]; then
-            echo "┌──────────────────────────────────────────┐"
-            echo "│    SECRETS FOUND — Review required     │"
-            echo "└──────────────────────────────────────────┘"
-          else
-            echo "┌──────────────────────────────────────────┐"
-            echo "│    No secrets detected                 │"
-            echo "└──────────────────────────────────────────┘"
-          fi
+          # Enrich JSON with run metadata
+          python3 - <<'EOF'
+          import json, os
+          from datetime import datetime, timezone
 
-  
+          report_path = "gitleaks-report.json"
+          try:
+              with open(report_path) as f:
+                  findings = json.load(f)
+          except (FileNotFoundError, json.JSONDecodeError):
+              findings = []
+
+          output = {
+              "tool": "gitleaks",
+              "version": "8.18.4",
+              "run_at": datetime.now(timezone.utc).isoformat(),
+              "repository": os.environ.get("GITHUB_REPOSITORY", ""),
+              "ref": os.environ.get("GITHUB_REF", ""),
+              "sha": os.environ.get("GITHUB_SHA", ""),
+              "summary": {
+                  "secrets_found": len(findings)
+              },
+              "findings": findings
+          }
+
+          with open(report_path, "w") as f:
+              json.dump(output, f, indent=2)
+
+          print(f"JSON report written: {len(findings)} finding(s)")
+          EOF
+
+      - name: Upload Gitleaks reports (text + JSON)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-reports
+          path: |
+            gitleaks-summary.txt
+            gitleaks-report.json
+          retention-days: 30
+
+
   # JOB 2: Trivy Image Scan — CVEs in Docker image
-  
+
+
   trivy-image:
     name: Trivy Image Scan
     runs-on: ubuntu-latest
@@ -93,16 +146,19 @@ jobs:
           docker pull \
             ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:backend-latest
 
-      - name: Run Trivy image scan — print table to log
+      - name: Run Trivy image scan — print to log and save text report
         run: |
-          echo ""
-          echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║                 TRIVY IMAGE SCAN REPORT                     ║"
-          echo "║   Scope : CRITICAL & HIGH CVEs (with fixes available)       ║"
-          echo "╚══════════════════════════════════════════════════════════════╝"
-          echo ""
+          # Write banner to text report and stdout simultaneously
+          {
+            echo ""
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "║                 TRIVY IMAGE SCAN REPORT                     ║"
+            echo "║   Scope : CRITICAL & HIGH CVEs (with fixes available)       ║"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            echo ""
+          } | tee trivy-image-summary.txt
 
-          # Print table to stdout — visible directly in runner log
+          # Run table scan — stream to stdout and append to text report
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             aquasec/trivy:latest image \
@@ -113,20 +169,96 @@ jobs:
             --severity CRITICAL,HIGH \
             --no-progress \
             ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:backend-latest \
-            2>&1 | tee trivy-image-report.txt
+            2>&1 | tee -a trivy-image-summary.txt
 
-          echo ""
-          CRITICAL=$(grep -c "CRITICAL" trivy-image-report.txt 2>/dev/null || echo "0")
-          HIGH=$(grep -c "HIGH" trivy-image-report.txt 2>/dev/null || echo "0")
-          echo "┌──────────────────────────────────────────┐"
-          echo "│  IMAGE SCAN SUMMARY                      │"
-          printf "│  %-20s %-19s│\n" "CRITICAL CVEs:" "$CRITICAL"
-          printf "│  %-20s %-19s│\n" "HIGH CVEs:"     "$HIGH"
-          echo "└──────────────────────────────────────────┘"
+          # Append summary box to text report and stdout
+          CRITICAL=$(grep -c "CRITICAL" trivy-image-summary.txt 2>/dev/null || echo "0")
+          HIGH=$(grep -c "HIGH"         trivy-image-summary.txt 2>/dev/null || echo "0")
+          {
+            echo ""
+            echo "┌──────────────────────────────────────────┐"
+            echo "│  IMAGE SCAN SUMMARY                      │"
+            printf "│  %-20s %-19s│\n" "CRITICAL CVEs:" "$CRITICAL"
+            printf "│  %-20s %-19s│\n" "HIGH CVEs:"     "$HIGH"
+            echo "└──────────────────────────────────────────┘"
+          } | tee -a trivy-image-summary.txt
+
+      - name: Generate Trivy image JSON report
+        if: always()
+        run: |
+          # Re-run in JSON format for structured output
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ${{ github.workspace }}:/reports \
+            aquasec/trivy:latest image \
+            --format json \
+            --exit-code 0 \
+            --ignore-unfixed \
+            --vuln-type os,library \
+            --severity CRITICAL,HIGH \
+            --no-progress \
+            --output /reports/trivy-image-raw.json \
+            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:backend-latest \
+            2>/dev/null || true
+
+          # Enrich JSON with run metadata
+          python3 - <<'EOF'
+          import json, os
+          from datetime import datetime, timezone
+
+          try:
+              with open("trivy-image-raw.json") as f:
+                  raw = json.load(f)
+          except (FileNotFoundError, json.JSONDecodeError):
+              raw = {}
+
+          results = raw.get("Results", [])
+          total_critical = sum(
+              1 for r in results for v in r.get("Vulnerabilities") or []
+              if v.get("Severity") == "CRITICAL"
+          )
+          total_high = sum(
+              1 for r in results for v in r.get("Vulnerabilities") or []
+              if v.get("Severity") == "HIGH"
+          )
+
+          output = {
+              "tool": "trivy",
+              "scan_type": "image",
+              "version": raw.get("SchemaVersion", ""),
+              "run_at": datetime.now(timezone.utc).isoformat(),
+              "repository": os.environ.get("GITHUB_REPOSITORY", ""),
+              "ref": os.environ.get("GITHUB_REF", ""),
+              "sha": os.environ.get("GITHUB_SHA", ""),
+              "image": raw.get("ArtifactName", ""),
+              "summary": {
+                  "critical_cves": total_critical,
+                  "high_cves": total_high,
+                  "total_cves": total_critical + total_high
+              },
+              "results": results
+          }
+
+          with open("trivy-image-report.json", "w") as f:
+              json.dump(output, f, indent=2)
+
+          print(f"JSON report written: {total_critical} CRITICAL, {total_high} HIGH")
+          EOF
+
+      - name: Upload Trivy image reports (text + JSON)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-reports
+          path: |
+            trivy-image-summary.txt
+            trivy-image-report.json
+          retention-days: 30
 
 
-
+  
   # JOB 3: Trivy Filesystem Scan — vulnerabilities in source code
+  
 
   trivy-filesystem:
     name: Trivy Filesystem Scan
@@ -137,16 +269,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Trivy filesystem scan — print table to log
+      - name: Run Trivy filesystem scan — print to log and save text report
         run: |
-          echo ""
-          echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║               TRIVY FILESYSTEM SCAN REPORT                  ║"
-          echo "║   Scope : Vulns + Secrets + Misconfigs (CRITICAL & HIGH)    ║"
-          echo "╚══════════════════════════════════════════════════════════════╝"
-          echo ""
+          # Write banner to text report and stdout simultaneously
+          {
+            echo ""
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "║               TRIVY FILESYSTEM SCAN REPORT                  ║"
+            echo "║   Scope : Vulns + Secrets + Misconfigs (CRITICAL & HIGH)    ║"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            echo ""
+          } | tee trivy-fs-summary.txt
 
-          # Print table to stdout — visible directly in runner log
+          # Run table scan — stream to stdout and append to text report
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             aquasec/trivy:latest fs \
@@ -158,20 +293,102 @@ jobs:
             --scanners vuln,secret,misconfig \
             --no-progress \
             /workspace \
-            2>&1 | tee trivy-fs-report.txt
+            2>&1 | tee -a trivy-fs-summary.txt
 
-          echo ""
-          CRITICAL=$(grep -c "CRITICAL" trivy-fs-report.txt 2>/dev/null || echo "0")
-          HIGH=$(grep -c "HIGH" trivy-fs-report.txt 2>/dev/null || echo "0")
-          SECRETS=$(grep -c "SECRET" trivy-fs-report.txt 2>/dev/null || echo "0")
-          MISCONFIG=$(grep -c "MISCONF" trivy-fs-report.txt 2>/dev/null || echo "0")
-          echo "┌──────────────────────────────────────────┐"
-          echo "│  FILESYSTEM SCAN SUMMARY                 │"
-          printf "│  %-20s %-19s│\n" "CRITICAL CVEs:"      "$CRITICAL"
-          printf "│  %-20s %-19s│\n" "HIGH CVEs:"          "$HIGH"
-          printf "│  %-20s %-19s│\n" "Secrets found:"      "$SECRETS"
-          printf "│  %-20s %-19s│\n" "Misconfigurations:"  "$MISCONFIG"
-          echo "└──────────────────────────────────────────┘"
+          # Append summary box to text report and stdout
+          CRITICAL=$(grep -c "CRITICAL" trivy-fs-summary.txt 2>/dev/null || echo "0")
+          HIGH=$(grep -c "HIGH"         trivy-fs-summary.txt 2>/dev/null || echo "0")
+          SECRETS=$(grep -c "SECRET"    trivy-fs-summary.txt 2>/dev/null || echo "0")
+          MISCONFIG=$(grep -c "MISCONF" trivy-fs-summary.txt 2>/dev/null || echo "0")
+          {
+            echo ""
+            echo "┌──────────────────────────────────────────┐"
+            echo "│  FILESYSTEM SCAN SUMMARY                 │"
+            printf "│  %-20s %-19s│\n" "CRITICAL CVEs:"     "$CRITICAL"
+            printf "│  %-20s %-19s│\n" "HIGH CVEs:"         "$HIGH"
+            printf "│  %-20s %-19s│\n" "Secrets found:"     "$SECRETS"
+            printf "│  %-20s %-19s│\n" "Misconfigurations:" "$MISCONFIG"
+            echo "└──────────────────────────────────────────┘"
+          } | tee -a trivy-fs-summary.txt
+
+      - name: Generate Trivy filesystem JSON report
+        if: always()
+        run: |
+          # Re-run in JSON format for structured output
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            aquasec/trivy:latest fs \
+            --format json \
+            --exit-code 0 \
+            --ignore-unfixed \
+            --vuln-type os,library \
+            --severity CRITICAL,HIGH \
+            --scanners vuln,secret,misconfig \
+            --no-progress \
+            --output /workspace/trivy-fs-raw.json \
+            /workspace \
+            2>/dev/null || true
+
+          # Enrich JSON with run metadata
+          python3 - <<'EOF'
+          import json, os
+          from datetime import datetime, timezone
+
+          try:
+              with open("trivy-fs-raw.json") as f:
+                  raw = json.load(f)
+          except (FileNotFoundError, json.JSONDecodeError):
+              raw = {}
+
+          results = raw.get("Results", [])
+          total_critical = sum(
+              1 for r in results for v in r.get("Vulnerabilities") or []
+              if v.get("Severity") == "CRITICAL"
+          )
+          total_high = sum(
+              1 for r in results for v in r.get("Vulnerabilities") or []
+              if v.get("Severity") == "HIGH"
+          )
+          total_secrets    = sum(len(r.get("Secrets")           or []) for r in results)
+          total_misconfigs = sum(len(r.get("Misconfigurations") or []) for r in results)
+
+          output = {
+              "tool": "trivy",
+              "scan_type": "filesystem",
+              "version": raw.get("SchemaVersion", ""),
+              "run_at": datetime.now(timezone.utc).isoformat(),
+              "repository": os.environ.get("GITHUB_REPOSITORY", ""),
+              "ref": os.environ.get("GITHUB_REF", ""),
+              "sha": os.environ.get("GITHUB_SHA", ""),
+              "summary": {
+                  "critical_cves":     total_critical,
+                  "high_cves":         total_high,
+                  "total_cves":        total_critical + total_high,
+                  "secrets_found":     total_secrets,
+                  "misconfigurations": total_misconfigs
+              },
+              "results": results
+          }
+
+          with open("trivy-fs-report.json", "w") as f:
+              json.dump(output, f, indent=2)
+
+          print(
+              f"JSON report written: {total_critical} CRITICAL, {total_high} HIGH, "
+              f"{total_secrets} secrets, {total_misconfigs} misconfigs"
+          )
+          EOF
+
+      - name: Upload Trivy filesystem reports (text + JSON)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-filesystem-reports
+          path: |
+            trivy-fs-summary.txt
+            trivy-fs-report.json
+          retention-days: 30
+
 
 
   # JOB 4: SonarQube Community — code quality + security analysis
@@ -242,13 +459,13 @@ jobs:
             -Dsonar.token=${{ steps.sonar-token.outputs.token }} \
             -Dsonar.python.version=3
 
-      - name: Print SonarQube results table to log
+      - name: Print SonarQube results — log and save text report
         if: always()
         run: |
           echo "Waiting for analysis to complete..."
           sleep 20
 
-          # Fetch quality gate
+          # Fetch quality gate status
           QG=$(curl -s -u admin:admin \
             "http://localhost:9000/api/qualitygates/project_status?projectKey=hdfc-onboarding-dashboard" \
             | python3 -c "
@@ -257,7 +474,7 @@ jobs:
           print(data.get('projectStatus', {}).get('status', 'UNKNOWN'))
           ")
 
-          # Fetch severity counts
+          # Fetch severity counts via facets
           COUNTS=$(curl -s -u admin:admin \
             "http://localhost:9000/api/issues/search?projectKeys=hdfc-onboarding-dashboard&resolved=false&facets=severities" \
             | python3 -c "
@@ -278,7 +495,7 @@ jobs:
           INFO=$(echo "$COUNTS"     | sed -n '4p')
           TOTAL=$(echo "$COUNTS"    | sed -n '5p')
 
-          # Fetch top CRITICAL/MAJOR issues for detail table
+          # Fetch first 20 CRITICAL/MAJOR issues for the console table preview
           ISSUES=$(curl -s -u admin:admin \
             "http://localhost:9000/api/issues/search?projectKeys=hdfc-onboarding-dashboard&severities=CRITICAL,MAJOR&resolved=false&ps=20" \
             | python3 -c "
@@ -298,34 +515,184 @@ jobs:
                   print(f\"{i.get('severity',''):<12} {i.get('type',''):<20} {comp:<35} {line:<6} {msg}\")
           ")
 
-          # Print full report to runner log
-          echo ""
-          echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║                SONARQUBE ANALYSIS REPORT                    ║"
-          echo "╠══════════════════════════════════════════════════════════════╣"
-          if [ "$QG" = "OK" ]; then
-            echo "║  Quality Gate :  PASSED                                  ║"
-          else
-            echo "║  Quality Gate :  $QG                                     ║"
-          fi
-          echo "╠══════════════════════════════════════════════════════════════╣"
-          echo "║  ISSUE SUMMARY                                               ║"
-          printf "║  %-20s %-39s║\n" "CRITICAL:"  "$CRITICAL"
-          printf "║  %-20s %-39s║\n" "MAJOR:"     "$MAJOR"
-          printf "║  %-20s %-39s║\n" "MINOR:"     "$MINOR"
-          printf "║  %-20s %-39s║\n" "INFO:"      "$INFO"
-          printf "║  %-20s %-39s║\n" "TOTAL:"     "$TOTAL"
-          echo "╠══════════════════════════════════════════════════════════════╣"
-          echo "║  CRITICAL & MAJOR ISSUES DETAIL                              ║"
-          echo "╚══════════════════════════════════════════════════════════════╝"
-          echo ""
-          echo "$ISSUES"
-          echo ""
-
-          # Save same output as artifact
+          # Write full report to text file and stdout simultaneously
           {
-            echo "Quality Gate: $QG"
-            echo "CRITICAL: $CRITICAL | MAJOR: $MAJOR | MINOR: $MINOR | INFO: $INFO | TOTAL: $TOTAL"
+            echo ""
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "║                SONARQUBE ANALYSIS REPORT                    ║"
+            echo "╠══════════════════════════════════════════════════════════════╣"
+            if [ "$QG" = "OK" ]; then
+              echo "║  Quality Gate :  PASSED                                      ║"
+            else
+              echo "║  Quality Gate :  $QG                                         ║"
+            fi
+            echo "╠══════════════════════════════════════════════════════════════╣"
+            echo "║  ISSUE SUMMARY                                                ║"
+            printf "║  %-20s %-39s║\n" "CRITICAL:"  "$CRITICAL"
+            printf "║  %-20s %-39s║\n" "MAJOR:"     "$MAJOR"
+            printf "║  %-20s %-39s║\n" "MINOR:"     "$MINOR"
+            printf "║  %-20s %-39s║\n" "INFO:"      "$INFO"
+            printf "║  %-20s %-39s║\n" "TOTAL:"     "$TOTAL"
+            echo "╠══════════════════════════════════════════════════════════════╣"
+            echo "║  CRITICAL & MAJOR ISSUES (first 20 — see JSON for all)       ║"
+            echo "╚══════════════════════════════════════════════════════════════╝"
             echo ""
             echo "$ISSUES"
-          } > sonar-issues-report.txt
+            echo ""
+          } | tee sonar-summary.txt
+
+      - name: Generate SonarQube JSON report (paginated — up to 10,000 issues)
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import json, os, subprocess, time
+          from datetime import datetime, timezone
+
+          BASE_URL    = "http://localhost:9000"
+          AUTH        = ("admin", "admin")
+          PROJECT     = "hdfc-onboarding-dashboard"
+          PAGE_SIZE   = 500    # SonarQube maximum page size
+          MAX_RESULTS = 10000  # SonarQube hard cap: p * ps <= 10,000
+
+          def curl_json(url):
+              """Fetch a SonarQube API endpoint and return parsed JSON."""
+              result = subprocess.run(
+                  ["curl", "-s", "-u", f"{AUTH[0]}:{AUTH[1]}", url],
+                  capture_output=True, text=True
+              )
+              try:
+                  return json.loads(result.stdout)
+              except json.JSONDecodeError:
+                  return {}
+
+          # ── Quality gate ──────────────────────────────────────────────────────
+          qg_data      = curl_json(
+              f"{BASE_URL}/api/qualitygates/project_status?projectKey={PROJECT}"
+          )
+          quality_gate   = qg_data.get("projectStatus", {}).get("status", "UNKNOWN")
+          qg_conditions  = qg_data.get("projectStatus", {}).get("conditions", [])
+
+          # ── Severity summary (single facets request) ──────────────────────────
+          facet_data   = curl_json(
+              f"{BASE_URL}/api/issues/search"
+              f"?projectKeys={PROJECT}&resolved=false&facets=severities&ps=1"
+          )
+          facets       = {f["property"]: f["values"] for f in facet_data.get("facets", [])}
+          severities   = {v["val"]: v["count"] for v in facets.get("severities", [])}
+          grand_total  = facet_data.get("total", 0)
+
+          # ── Paginated issue collection ────────────────────────────────────────
+          # SonarQube enforces: p * ps <= 10,000.
+          # With ps=500 the highest reachable page is 20 (500 × 20 = 10,000).
+          all_issues = []
+          page       = 1
+          max_page   = MAX_RESULTS // PAGE_SIZE  # = 20
+
+          print(
+              f"Collecting issues for '{PROJECT}' "
+              f"(ps={PAGE_SIZE}, hard cap={MAX_RESULTS}, max_page={max_page}) ..."
+          )
+
+          while page <= max_page:
+              data         = curl_json(
+                  f"{BASE_URL}/api/issues/search"
+                  f"?projectKeys={PROJECT}"
+                  f"&resolved=false"
+                  f"&ps={PAGE_SIZE}"
+                  f"&p={page}"
+              )
+              page_issues  = data.get("issues", [])
+              server_total = data.get("total", 0)
+
+              if not page_issues:
+                  print(f"  Page {page}: empty response — collection complete.")
+                  break
+
+              all_issues.extend(page_issues)
+              collected = len(all_issues)
+              print(
+                  f"  Page {page:>3}/{max_page}: "
+                  f"+{len(page_issues):>4} issues  |  "
+                  f"collected {collected:>5} / reported {server_total}"
+              )
+
+              # Stop once every reported issue has been collected
+              if collected >= server_total:
+                  print(f"  All {server_total} issues collected.")
+                  break
+
+              # Stop one page before breaching the 10,000-result cap
+              if (page + 1) * PAGE_SIZE > MAX_RESULTS:
+                  print(
+                      f"  Next page would exceed the 10,000-result cap "
+                      f"— stopping at {collected} issues."
+                  )
+                  break
+
+              page += 1
+              time.sleep(0.2)  # be polite to the local instance
+
+          print(f"Pagination complete. Total issues collected: {len(all_issues)}")
+
+          # Normalise fields for consistent downstream consumption
+          normalised = [
+              {
+                  "key":           i.get("key"),
+                  "severity":      i.get("severity"),
+                  "type":          i.get("type"),
+                  "component":     i.get("component", "").split(":")[-1],
+                  "line":          i.get("line"),
+                  "message":       i.get("message"),
+                  "rule":          i.get("rule"),
+                  "status":        i.get("status"),
+                  "creation_date": i.get("creationDate"),
+                  "tags":          i.get("tags", []),
+                  "debt":          i.get("debt"),
+              }
+              for i in all_issues
+          ]
+
+          # ── Assemble final report ─────────────────────────────────────────────
+          output = {
+              "tool":        "sonarqube",
+              "version":     "community",
+              "run_at":      datetime.now(timezone.utc).isoformat(),
+              "repository":  os.environ.get("GITHUB_REPOSITORY", ""),
+              "ref":         os.environ.get("GITHUB_REF", ""),
+              "sha":         os.environ.get("GITHUB_SHA", ""),
+              "project_key": PROJECT,
+              "quality_gate": {
+                  "status":     quality_gate,
+                  "conditions": qg_conditions
+              },
+              "summary": {
+                  "critical":        severities.get("CRITICAL", 0),
+                  "major":           severities.get("MAJOR",    0),
+                  "minor":           severities.get("MINOR",    0),
+                  "info":            severities.get("INFO",     0),
+                  "total_reported":  grand_total,
+                  "total_collected": len(normalised),
+                  "capped_at_10k":   grand_total > MAX_RESULTS
+              },
+              "issues": normalised
+          }
+
+          with open("sonar-report.json", "w") as f:
+              json.dump(output, f, indent=2)
+
+          print(
+              f"sonar-report.json written — "
+              f"{len(normalised)} issues collected, "
+              f"quality gate: {quality_gate}"
+          )
+          EOF
+
+      - name: Upload SonarQube reports (text + JSON)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarqube-reports
+          path: |
+            sonar-summary.txt
+            sonar-report.json
+          retention-days: 30
