@@ -541,7 +541,7 @@ jobs:
             echo ""
           } | tee sonar-summary.txt
 
-      - name: Generate SonarQube JSON report (paginated — up to 10,000 issues)
+      - name: Generate SonarQube JSON report
         if: always()
         run: |
           python3 - <<'EOF'
