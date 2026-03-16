@@ -95,5 +95,5 @@ jobs:
       
       - name: Deployment complete
         run: |
-          echo "✅ Backend deployed successfully"
+          echo "Backend deployed successfully"
           echo "Image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
