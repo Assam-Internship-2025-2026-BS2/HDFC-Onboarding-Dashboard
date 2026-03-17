@@ -23,6 +23,14 @@ RUN rm -rf /usr/share/nginx/html/*
 # copy build files (Vite outputs to dist/)
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-EXPOSE 80
+# DS-0002: run as non-root user
+RUN chown -R nginx:nginx /usr/share/nginx/html && \
+    chown -R nginx:nginx /var/cache/nginx && \
+    chown -R nginx:nginx /var/log/nginx && \
+    touch /var/run/nginx.pid && \
+    chown nginx:nginx /var/run/nginx.pid
+USER nginx
+
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]
