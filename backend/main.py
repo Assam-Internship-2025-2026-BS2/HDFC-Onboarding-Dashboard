@@ -15,7 +15,7 @@ from app.routers.analysis_router import router as analysis_router
 app = FastAPI(
     title="Business Ops Analytics API",
     version="1.0.0",
-    docs_url="/docs",       # Swagger UI
+    docs_url="/docs",       
     redoc_url="/redoc",     
     openapi_url="/openapi.json"
 )
@@ -25,7 +25,7 @@ origins = [
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
-    # ALB - public access
+  
     "http://business-dashboard-alb-1108487393.ap-southeast-2.elb.amazonaws.com",
     "http://dugkfqqpvqc7l.cloudfront.net"
     "https://dugkfqqpvqc7l.cloudfront.net"
