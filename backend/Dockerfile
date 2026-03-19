@@ -1,5 +1,5 @@
 # Stage 1: Builder 
-FROM python:3.11-slim AS builder
+FROM python:3.11.12-slim-trixie AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 
 # Stage 2: Runtime
-FROM python:3.11-slim
+FROM python:3.11.12-slim-trixie
 
 WORKDIR /app
 
@@ -29,12 +29,16 @@ RUN apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt
 
 COPY --from=builder /install /usr/local
 
+# Fix CVE-2026-23949 & CVE-2026-24049: Upgrade runtime Python packages to clear vulnerable base-image metadata
+RUN pip install --no-cache-dir \
+    "wheel>=0.46.2" \
+    "setuptools>=79.0.2" \
+    "jaraco.context>=6.1.0"
+
 COPY . .
 
-RUN chmod +x entrypoint.sh
-
 # DS-0002: run as non-root user
-RUN useradd -r -u 1001 -s /sbin/nologin appuser
+RUN chmod +x entrypoint.sh && useradd -r -u 1001 -s /sbin/nologin appuser
 USER appuser
 
 EXPOSE 8000

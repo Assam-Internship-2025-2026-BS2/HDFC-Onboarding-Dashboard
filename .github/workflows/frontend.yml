@@ -29,7 +29,7 @@ jobs:
           node-version: '20'
 
       
-      # 3. Install dependencies (clean install to fix @rollup/rollup-linux-x64-gnu missing)
+      # 3. Install dependencies (clean install)
       
       - name: Install dependencies
         working-directory: frontend
