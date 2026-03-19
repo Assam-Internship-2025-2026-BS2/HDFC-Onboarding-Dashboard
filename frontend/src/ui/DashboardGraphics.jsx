@@ -97,7 +97,7 @@ export default function DashboardGraphics({ data }) {
                 formatter={(value, name, props) => {
                    const total = channelData.reduce((acc, curr) => acc + curr.value, 0);
                    const percent = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                   return [`${value} (${percent}%)`];
+                   return [`${value.toLocaleString('en-IN')} (${percent}%)`];
                 }}
                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
               />
@@ -110,7 +110,7 @@ export default function DashboardGraphics({ data }) {
                   const val = dataEntry ? dataEntry.value : 0;
                   const total = channelData.reduce((acc, curr) => acc + curr.value, 0);
                   const percent = total > 0 ? Math.round((val / total) * 100) : 0;
-                  return <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{value} ({percent}%)</span>;
+                  return <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{value} - {val.toLocaleString('en-IN')} ({percent}%)</span>;
                 }}
               />
             </PieChart>
