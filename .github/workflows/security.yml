@@ -1,19 +1,21 @@
 name: Security & QA
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["CI/CD"]  
+    types: [completed]
+    branches: [main]
+
   pull_request:
     branches:
       - main
+
   workflow_dispatch:
+
 
 jobs:
 
-  
   # JOB 1: Gitleaks — Scan for hardcoded secrets in code/history
-
 
   gitleaks:
     name: Gitleaks Secret Scan
@@ -119,11 +121,14 @@ jobs:
 
   # JOB 2: Trivy Image Scan — CVEs in Docker image
 
-
   trivy-image:
     name: Trivy Image Scan
     runs-on: ubuntu-latest
     continue-on-error: true  # advisory
+
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
 
     steps:
       - name: Checkout repository
@@ -269,7 +274,6 @@ jobs:
   
   # JOB 3: Trivy Filesystem Scan — vulnerabilities in source code
   
-
   trivy-filesystem:
     name: Trivy Filesystem Scan
     runs-on: ubuntu-latest
@@ -410,7 +414,6 @@ jobs:
             trivy-fs-summary.txt
             trivy-fs-report.json
           retention-days: 30
-
 
 
   # JOB 4: SonarQube Community — code quality + security analysis

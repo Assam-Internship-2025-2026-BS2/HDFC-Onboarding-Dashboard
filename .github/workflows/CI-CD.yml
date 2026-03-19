@@ -1,0 +1,257 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+  workflow_dispatch:
+    inputs:
+      deploy_frontend:
+        description: 'Deploy frontend'
+        type: boolean
+        default: true
+      deploy_backend:
+        description: 'Deploy backend'
+        type: boolean
+        default: true
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+  IMAGE_TAG: backend-${{ github.sha }}
+
+jobs:
+
+  # DETECT CHANGES: Determines which parts of the repo changed so downstream jobs can conditionally run.
+
+  detect-changes:
+    name: Detect Changed Paths
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.set-outputs.outputs.frontend }}
+      backend:  ${{ steps.set-outputs.outputs.backend }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check which paths changed (push only)
+        uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'push'
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            backend:
+              - 'backend/**'
+
+      - name: Set final outputs
+        id: set-outputs
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            # Manual run — use the checkbox inputs directly
+            echo "frontend=${{ inputs.deploy_frontend }}" >> $GITHUB_OUTPUT
+            echo "backend=${{ inputs.deploy_backend }}"  >> $GITHUB_OUTPUT
+          else
+            # Push — use paths-filter results
+            echo "frontend=${{ steps.filter.outputs.frontend }}" >> $GITHUB_OUTPUT
+            echo "backend=${{ steps.filter.outputs.backend }}"   >> $GITHUB_OUTPUT
+          fi
+
+
+  # FRONTEND CI/CD
+
+  deploy-frontend:
+    name: Build and Deploy Frontend
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+
+    steps:
+
+      # 1. Checkout code
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      # 2. Set up Node.js
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+
+      # 3. Install dependencies (clean install)
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install
+
+
+      # 4. Build React app with production env vars
+
+      - name: Build React app
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_API_URL: https://dugkfqqpvqc7l.cloudfront.net/api
+
+
+      # 5. Verify build output
+
+      - name: Verify build output
+        working-directory: frontend
+        run: |
+          echo "Build contents:"
+          ls -la dist/
+          echo "Verifying API URL in build:"
+          grep -r "dugkfqqpvqc7l" dist/assets/*.js --include="*.js" -l && \
+            echo "Correct API URL found in build" || \
+            echo "WARNING: API URL not found in build"
+
+
+      # 6. Configure AWS credentials
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+
+      # 7. Sync dist/ to S3 (delete removed files automatically)
+
+      - name: Deploy to S3
+        working-directory: frontend
+        run: |
+          aws s3 sync dist/ s3://${{ secrets.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "public, max-age=31536000" \
+            --exclude "index.html"
+
+          # index.html gets a short cache so updates propagate fast
+          aws s3 cp dist/index.html s3://${{ secrets.S3_BUCKET }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+
+      # 8. Invalidate CloudFront cache
+
+      - name: Invalidate CloudFront cache
+        run: |
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*" \
+            --query 'Invalidation.Id' \
+            --output text)
+          echo "Invalidation ID: $INVALIDATION_ID"
+          echo "Waiting for invalidation to complete..."
+          aws cloudfront wait invalidation-completed \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --id $INVALIDATION_ID
+          echo "CloudFront cache invalidated"
+
+
+      # 9. Confirm deployment
+
+      - name: Deployment complete
+        run: |
+          echo "Frontend deployed successfully"
+          echo "URL: https://dugkfqqpvqc7l.cloudfront.net"
+
+
+  # BACKEND CI/CD
+
+  deploy-backend:
+    name: Build, Push and Deploy Backend
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
+
+    steps:
+
+      # 1. Checkout code
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      # 2. Configure AWS credentials
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+
+      # 3. Log in to Amazon ECR
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+
+      # 4. Build and push backend Docker image
+
+      - name: Build and push backend image
+        working-directory: backend
+        id: build-image
+        run: |
+          docker build --no-cache -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          # Also update the stable tag
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+                     $ECR_REGISTRY/$ECR_REPOSITORY:backend-latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:backend-latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+
+      # 5. Download current task definition
+
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ secrets.BACKEND_TASK_DEFINITION }} \
+            --query taskDefinition \
+            > task-definition.json
+
+
+      # 6. Inject new image URI into task definition
+
+      - name: Update image in task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: fastapi
+          image: ${{ steps.build-image.outputs.image }}
+
+
+      # 7. Deploy updated task definition to ECS
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ secrets.BACKEND_ECS_SERVICE }}
+          cluster: ${{ secrets.ECS_CLUSTER }}
+          wait-for-service-stability: true # pipeline waits until healthy
+
+
+      # 8. Confirm deployment
+
+      - name: Deployment complete
+        run: |
+          echo "Backend deployed successfully"
+          echo "Image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
