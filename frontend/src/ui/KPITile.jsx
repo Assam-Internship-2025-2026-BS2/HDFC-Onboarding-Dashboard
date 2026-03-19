@@ -35,8 +35,8 @@ export default function KPITile({
     <div 
       className="kpi-card" 
       style={{
-        backgroundColor: customBg || '#fff', 
-        borderColor: customBorder || '#e5e7eb'
+        ...(customBg ? { backgroundColor: customBg } : {}),
+        ...(customBorder ? { borderColor: customBorder } : {})
       }}
     >
       <div className="kpi-title-row">

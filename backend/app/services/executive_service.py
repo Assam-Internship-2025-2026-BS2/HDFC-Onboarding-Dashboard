@@ -20,22 +20,7 @@ from app.queries.dashboard_queries import (
 )
 
 
-def get_date_range(time_range):
-
-    today = datetime.today().date()
-
-    if time_range == "Yesterday":
-        y = today - timedelta(days=1)
-        return y, y
-
-    elif time_range == "Last 7 Days":
-        return today - timedelta(days=7), today
-
-    elif time_range == "Last 30 Days":
-        return today - timedelta(days=30), today
-
-    else:
-        return today.replace(day=1), today
+from app.utils.date_utils import get_date_range
 
 
 def get_comparison_range(comparison):
@@ -94,6 +79,7 @@ def generate_alerts(client, params):
         product = row[0]
         started = row[1] or 0
         completed = row[2] or 0
+        approved = row[3] or 0
         failures = row[4] or 0
         sla_breached = row[5] or 0
 
@@ -206,9 +192,18 @@ def fetch_executive_dashboard(time_range, comparison, channel, region, segment):
 
     row = result.result_rows[0] if result.result_rows else [0] * 12
 
-    started, submitted, in_progress, completed, approved, failures, \
-    avg_time, sla_target, pipeline_total, pipeline_risk, \
-    sla_breached, stuck = row
+    started = row[0] or 0
+    submitted = row[1] or 0
+    in_progress = row[2] or 0
+    completed = row[3] or 0
+    approved = row[4] or 0
+    failures = row[5] or 0
+    avg_time = row[6] or 0
+    sla_target = row[7] or 0
+    pipeline_total = row[8] or 0
+    pipeline_risk = row[9] or 0
+    sla_breached = row[10] or 0
+    stuck = row[11] or 0
 
     conversion = (completed / started) * 100 if started else 0
     approval = (approved / completed) * 100 if completed else 0
@@ -236,10 +231,10 @@ def fetch_executive_dashboard(time_range, comparison, channel, region, segment):
 
         comp_row = comp_result.result_rows[0] if comp_result.result_rows else [0] * 12
 
-        prev_started = comp_row[0]
-        prev_completed = comp_row[3]
-        prev_avg_time = comp_row[6]
-        prev_pipeline = comp_row[9]
+        prev_started = comp_row[0] or 0
+        prev_completed = comp_row[3] or 0
+        prev_avg_time = comp_row[6] or 0
+        prev_pipeline = comp_row[9] or 0
 
     started_trend, started_dir = calculate_trend(started, prev_started)
     completed_trend, completed_dir = calculate_trend(completed, prev_completed)
@@ -255,7 +250,13 @@ def fetch_executive_dashboard(time_range, comparison, channel, region, segment):
 
     alerts = generate_alerts(client, params)
 
-    insight_response = InsightService.compute_insights(to_date)
+    filters = {
+        "time_range": time_range,
+        "channel": channel,
+        "region": region,
+        "segment": segment
+    }
+    insight_response = InsightService.compute_insights(filters)
 
     channel_res = client.query(channel_distribution_query(), parameters=params)
     channel_data = [{"name": r[0], "value": r[1]} for r in channel_res.result_rows] if channel_res.result_rows else []

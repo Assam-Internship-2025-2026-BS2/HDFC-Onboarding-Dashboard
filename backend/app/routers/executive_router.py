@@ -43,8 +43,7 @@ def get_executive_dashboard(
     segment: str = Query("All Segments")
 ):
 
-    return fetch_executive_dashboard(
-        time_range.value,
+    return fetch_executive_dashboard(        time_range.value,
         comparison.value if comparison else None,
         channel,
         region,

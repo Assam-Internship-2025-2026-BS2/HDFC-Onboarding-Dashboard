@@ -807,7 +807,11 @@ body.dark .matrix-table th,
 body.dark .matrix-table td:first-child,
 body.dark .insight-title,
 body.dark .matrix-header h3,
-body.dark .panel-header h3 {
+body.dark .panel-header h3,
+body.dark .kpi-title-row,
+body.dark .kpi-stat strong,
+body.dark .insight-desc,
+body.dark .matrix-subtitle {
   color: #c9d1d9;
 }
 body.dark .matrix-table th,
@@ -822,8 +826,6 @@ body.dark .export-btn, body.dark .filter-select {
 
 /* Footer Section */
 .footer-section {
-  position: sticky;
-  bottom: 0;
   z-index: 1000;
   background: linear-gradient(135deg, #0033a0 0%, #0033a0 100%);
   color: #fff;

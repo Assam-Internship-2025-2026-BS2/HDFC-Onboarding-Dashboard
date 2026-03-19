@@ -12,7 +12,7 @@ def generate_dashboard_data(num_records=100000):
     segments = ['Retail', 'Priority', 'NR', 'SME']
 
     # Generate dates over the last 60 days
-    end_date = datetime.now().date()
+    end_date = datetime.now().date() - timedelta(days=1)
     start_date = end_date - timedelta(days=60)
     dates = [
         start_date + timedelta(days=x)

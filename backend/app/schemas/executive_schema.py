@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 from datetime import datetime
+from app.schemas.insight_schema import InsightCard
 
 class Alert(BaseModel):
     text: str
@@ -63,6 +64,7 @@ class FiltersApplied(BaseModel):
 
 class ExecutiveResponse(BaseModel):
     overall_health: OverallHealth
+    insights: List[InsightCard]
     kpi_cards: KPICards
     filters_applied: FiltersApplied
     channel_distribution: List[Dict]

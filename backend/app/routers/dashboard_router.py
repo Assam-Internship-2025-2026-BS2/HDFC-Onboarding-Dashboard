@@ -8,7 +8,7 @@ router = APIRouter(tags=["Dashboard"])
 
 from app.services.executive_service import get_date_range
 
-@router.get("/dashboard/stage-dropoff", response_model=List[Dict])
+@router.get("/stage-dropoff", response_model=List[Dict])
 def stage_dropoff(
     time_range: str | None = Query("This Month"),
     channel: str | None = Query(None),

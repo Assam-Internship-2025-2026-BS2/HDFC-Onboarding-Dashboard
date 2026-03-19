@@ -7,7 +7,16 @@ export default function DashboardGraphics({ data }) {
   if (!data || !data.kpi_cards) return null;
 
   // Dynamic Trend Analysis mapping from backend
-  const trendData = data.trend_data || [];
+  let trendData = data.trend_data || [];
+  
+  // If only one data point exists (e.g. for "Today"), duplicate it so the AreaChart renders an area/line instead of a single dot.
+  if (trendData.length === 1) {
+    trendData = [
+      { ...trendData[0], day: `Start (${trendData[0].day})` },
+      { ...trendData[0] },
+      { ...trendData[0], day: `End (${trendData[0].day})` }
+    ];
+  }
 
   // Dynamic Channel Distribution mapping from backend
   const channelData = data.channel_distribution || [];
@@ -19,7 +28,7 @@ export default function DashboardGraphics({ data }) {
       {/* Overall Trend Area Chart */}
       <div className="panel" style={{ padding: '24px' }}>
         <div className="panel-header" style={{ marginBottom: '24px', paddingBottom: 0, borderBottom: 'none' }}>
-          <h3 style={{ fontSize: '1.15rem', color: '#0f172a', margin: 0 }}>Onboarding Trend Analysis</h3>
+          <h3 style={{ fontSize: '1.15rem', margin: 0 }}>Onboarding Trend Analysis</h3>
         </div>
         <div style={{ height: '300px', width: '100%', minWidth: 0, minHeight: 0 }}>
           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
@@ -64,7 +73,7 @@ export default function DashboardGraphics({ data }) {
       {/* Channel Distribution Pie Chart */}
       <div className="panel" style={{ padding: '24px' }}>
         <div className="panel-header" style={{ marginBottom: '24px', paddingBottom: 0, borderBottom: 'none' }}>
-          <h3 style={{ fontSize: '1.15rem', color: '#0f172a', margin: 0 }}>Channel Origin</h3>
+          <h3 style={{ fontSize: '1.15rem', margin: 0 }}>Channel Origin</h3>
         </div>
         <div style={{ height: '300px', width: '100%', minWidth: 0, minHeight: 0 }}>
           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
@@ -85,14 +94,24 @@ export default function DashboardGraphics({ data }) {
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value) => `${value}`}
+                formatter={(value, name, props) => {
+                   const total = channelData.reduce((acc, curr) => acc + curr.value, 0);
+                   const percent = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                   return [`${value} (${percent}%)`];
+                }}
                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
               />
               <Legend
                 verticalAlign="bottom"
                 height={36}
                 iconType="circle"
-                formatter={(value) => <span style={{ color: '#475569', fontSize: '0.85rem', fontWeight: 500 }}>{value}</span>}
+                formatter={(value, entry) => {
+                  const dataEntry = channelData.find(d => d.name === value);
+                  const val = dataEntry ? dataEntry.value : 0;
+                  const total = channelData.reduce((acc, curr) => acc + curr.value, 0);
+                  const percent = total > 0 ? Math.round((val / total) * 100) : 0;
+                  return <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{value} ({percent}%)</span>;
+                }}
               />
             </PieChart>
           </ResponsiveContainer>

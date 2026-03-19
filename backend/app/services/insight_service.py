@@ -1,5 +1,5 @@
 from datetime import date
-from typing import List
+from typing import List, Dict
 
 from app.repositories.metrics_repository import MetricsRepository
 
@@ -13,9 +13,11 @@ from app.constants.thresholds import (
     SEVERITY_CRITICAL,
     SEVERITY_HIGH,
     SEVERITY_MEDIUM,
+    SEVERITY_LOW,
     PRIORITY_CRITICAL,
     PRIORITY_HIGH,
     PRIORITY_MEDIUM,
+    PRIORITY_LOW,
 )
 
 from app.schemas.insight_schema import InsightResponse, InsightCard
@@ -24,16 +26,16 @@ from app.schemas.insight_schema import InsightResponse, InsightCard
 class InsightService:
 
     @staticmethod
-    def compute_insights(metric_date: date) -> InsightResponse:
+    def compute_insights(filters: Dict) -> InsightResponse:
 
-        today_data = MetricsRepository.get_today_metrics(metric_date)
-        baseline_data = MetricsRepository.get_baseline_metrics(metric_date)
+        today_data = MetricsRepository.get_today_metrics(filters)
+        baseline_data = MetricsRepository.get_baseline_metrics(filters)
 
         insights: List[InsightCard] = []
 
         if not today_data or not baseline_data:
             return InsightResponse(
-                date=str(metric_date),
+                date=date.today(),
                 critical_count=0,
                 insights=[]
             )
@@ -46,7 +48,7 @@ class InsightService:
         baseline_conversion = baseline_data.get("avg_conversion_rate") or 0
         baseline_failures = baseline_data.get("avg_failed_transactions") or 0
 
-        product_metrics = MetricsRepository.get_product_metrics(metric_date) or []
+        product_metrics = MetricsRepository.get_product_metrics(filters) or []
 
         # ------------------------------------------------
         # PRODUCT LEVEL ANALYSIS
@@ -96,6 +98,36 @@ class InsightService:
                             cta_label="View Details"
                         )
                     )
+                elif drop_percent < -CONVERSION_DROP_THRESHOLD:
+                    insights.append(
+                        InsightCard(
+                            product=product_name,
+                            type="CONVERSION_IMPROVEMENT",
+                            severity=SEVERITY_LOW,
+                            priority_score=PRIORITY_LOW,
+                            metric_value=abs(drop_percent),
+                            metric_unit="%",
+                            stage="Checkout",
+                            impact="Revenue Increased",
+                            message=f"{product_name} conversion improved by {abs(drop_percent)}%",
+                            cta_label="View Details"
+                        )
+                    )
+                else:
+                    insights.append(
+                        InsightCard(
+                            product=product_name,
+                            type="CONVERSION_STABLE",
+                            severity=SEVERITY_LOW,
+                            priority_score=0,
+                            metric_value=round(today_conversion, 1),
+                            metric_unit="%",
+                            stage="Checkout",
+                            impact="Consistent Performance",
+                            message=f"{product_name} conversion is stable at {round(today_conversion, 1)}%",
+                            cta_label="View Data"
+                        )
+                    )
 
             # -------------------------
             # AC2 — Failure Spike
@@ -132,6 +164,21 @@ class InsightService:
                             impact="High failure rate",
                             message=f"{product_name} failures increased by {spike_percent}%",
                             cta_label="Explore Issue"
+                        )
+                    )
+                elif spike_percent < -FAILURE_SPIKE_THRESHOLD:
+                    insights.append(
+                        InsightCard(
+                            product=product_name,
+                            type="FAILURE_DROP",
+                            severity=SEVERITY_LOW,
+                            priority_score=PRIORITY_LOW,
+                            metric_value=abs(spike_percent),
+                            metric_unit="%",
+                            stage="Checkout",
+                            impact="Improved Reliability",
+                            message=f"{product_name} failures decreased by {abs(spike_percent)}%",
+                            cta_label="Explore Improvement"
                         )
                     )
 
@@ -190,7 +237,7 @@ class InsightService:
         )
 
         return InsightResponse(
-            date=str(metric_date),
+            date=date.today(),
             critical_count=critical_count,
             insights=insights
         )

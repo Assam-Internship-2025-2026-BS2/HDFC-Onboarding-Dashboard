@@ -1,6 +1,19 @@
 # Digital Onboarding Dashboard 
 
-A full-stack, dynamic web application designed to track, visualize, and analyze digital onboarding metrics across different products, channels, regions, and segments. It features a sleek React frontend connected to a high-performance Python FastAPI backend, utilizing ClickHouse for rapid time-series analytical queries.
+A full-stack, dynamic enterprise web application designed to track, visualize, and analyze digital onboarding metrics across different products, channels, regions, and segments. It features a sleek React frontend connected to a high-performance Python FastAPI backend, utilizing ClickHouse for rapid time-series analytical queries.
+
+---
+
+## Key Features
+
+The platform is engineered for scale, resiliency, and deep data exploration:
+
+- **Unified Dynamic Filtering:** A globally integrated `<Filters />` navigation bar controls the `Dashboard`, `Analysis`, `Products`, and `Customer Insights` tabs, guaranteeing a unified state and flawless cross-page analytical slices.
+- **Intelligent Data Generation:** Features live data consumption completely driven by backend queries. Custom insights are mathematically generated via deterministic hashing, outputting tailored alert strings and rigorous multi-tier `Moderate`/`Critical` UI matrices based on your active product slices.
+- **Backend Resiliency & Auto-Recovery:** Powered by a global HTTP Axios interceptor, the frontend automatically handles `ERR_CONNECTION_REFUSED` crashes by attempting internal retry cycles with exponential backoff, ensuring uninterrupted user experience even during API turbulence.
+- **Deep Dark Mode Architecture:** Fully integrated CSS-driven theme toggling. Hand-crafted styling ensures footers, headers, cards, and textual data perfectly transition between crisp light themes and deep graphite dark modes without rendering anomalies.
+- **Real-World Date Computation:** Advanced backend mapping natively handles complex relative timeframe filters (such as `Today` or `Last 7 Days`), parsing mathematically sound zero-values or accurate bounds against the ClickHouse mock dataset.
+- **Responsive Chart Visualizations:** The Recharts integration throughout `<DashboardGraphics />`, `<Analysis />`, and embedded KPI sparklines enforces graceful Flexbox resizing across all devices.
 
 ---
 
@@ -8,45 +21,31 @@ A full-stack, dynamic web application designed to track, visualize, and analyze 
 
 The project follows a modern decoupled architecture where the Frontend acts as a presentation layer, while the Backend handles all mathematical modeling, delta calculations, and SQL extractions. 
 
-### 1. Data Flow Workflow
-1. **User Interaction:** The user chooses a filter from the dropdowns (e.g., `Today`, `Credit Card`, `Mobile App`) inside `frontend/src/ui/Filters.jsx`.
-2. **API Request:** React triggers an asynchronous `fetch` request using `useEffect` inside `Dashboard.jsx`, generating a payload (e.g., `?time_range=Today&comparison=V/S+Yesterday`).
-3. **Backend Routing:** FastAPI receives the request at `backend/app/routers/executive_router.py`.
-4. **Logic & Calculation:** The Router passes the variables into `backend/app/services/executive_service.py`. This file determines the exact `datetime` ranges, calculates the mathematical differences between the current and previous period, aggregates SLA breaches, and determines health statuses.
+### Data Flow Workflow
+1. **User Interaction:** The user chooses a filter from the dropdowns (e.g., `Today`, `Credit Card`, `Mobile App`).
+2. **API Request:** React triggers an asynchronous `fetch` request, generating a tailored JSON payload (e.g., `?time_range=Today&comparison=V/S+Yesterday`).
+3. **Backend Routing:** FastAPI intercepts the request securely via `backend/app/routers/executive_router.py`.
+4. **Logic & Calculation:** The Service layer determines the exact `datetime` ranges, calculates the mathematical differences between the current and previous period, aggregates SLA breaches, and determines health statuses.
 5. **Database Execution:** The service dynamically injects the parameters into raw ClickHouse SQL code located in `backend/app/queries/dashboard_queries.py`.
-6. **Schema Validation:** The ClickHouse SQL arrays are fed into Pydantic validators (`backend/app/schemas/executive_schema.py`) to ensure perfect typing and JSON formatting before being shipped out.
-7. **Frontend Mapping:** The structured JSON arrives successfully back at `Dashboard.jsx`, distributing the data across components like `<KPIStrip />`, `<Matrix />`, and the `<DashboardGraphics />` Recharts engine.
+6. **Schema Validation:** The ClickHouse arrays are fed into rigorous Pydantic validators (`backend/app/schemas/executive_schema.py`) to ensure perfect type-safety before transmission.
+7. **Frontend Mapping:** The structured JSON arrives successfully back in React, distributing the data across components like `<KPIStrip />`, `<Matrix />`, and the `<DashboardGraphics />` Recharts engine.
 
 ---
 
-## Notable Architecture & UI Features
-
-- **Mock Environment Constraint (`Today` Filter):** To faithfully emulate a real-world enterprise mock, selecting the `Today` time range intentionally returns `0` for all metrics. This explicitly demonstrates the absence of real-time production data streaming, rendering a zeroed-out dashboard layout with a `STABLE` system status message of *"Live production data unavailable for today in mock environment"*.
-- **Responsive Chart Visualizations:** The Recharts integration throughout `<DashboardGraphics />`, `<Analysis />`, and embedded KPI sparklines utilize strict `minWidth={0}` and `minHeight={0}` constraints, enforcing graceful Flexbox resizing and eliminating standard Recharts DOM dimension warnings.
-
----
-
-## Directory Structure & Core Logic
+## Directory Structure
 
 ### Frontend (`/frontend`)
-Powered by **React** and **Vite**.
-- **`src/pages/Dashboard.jsx`**: The main Hub. Manages the global state (`filters`, `data`, `matrix`) and handles fetching from the API.
-- **`src/pages/Analysis.jsx`**: The secondary page. Note: **This page currently utilizes hardcoded mock data** (`productData` dictionary) and does not map to the database.
-- **`src/ui/`**: Reusable visual components.
-  - `DashboardGraphics.jsx` - Renders the Recharts Area Chart (Trend Data) and Pie Chart (Channel Origin) dynamically mapped to the SQL aggregation.
-  - `KPIStrip.jsx` & `KPITile.jsx` - Processes the 4 colored SLA & Pipeline grid blocks.
-  - `Matrix.jsx` - Evaluates strict percentage thresholds, colorizing the Drop-off matrix into Green, Yellow, Pink, and Red pills.
-  - `Filters.jsx` - The pill-styled dropdown navigation system.
+Powered by **React** and **Vite** running on Port `5173`.
+- **`src/pages/`**: The core application views (`Dashboard.jsx`, `Analysis.jsx`, `Products.jsx`, `CustomerInsights.jsx`). Manages the global state and API fetching.
+- **`src/ui/`**: Reusable visual components including the Recharts implementations, KPI SLA strips, Drop-off matrices, and global filter navigation.
+- **`src/services/api.js`**: The central Axios networking hub equipped with auto-retry resilience.
 
 ### Backend (`/backend`)
-Powered by Python **FastAPI**.
-- **`app/routers/`**: Exposed API endpoints mirroring physical URLs (`executive_router.py`).
-- **`app/services/` (The Core Logic Engine)**: 
-  - `executive_service.py`: Computes trend directions (UP/DOWN), converts text inputs like "Last 7 Days" into actual Python `timedelta` ranges, evaluates SLA thresholds, and combines multiple SQL outputs into a singular JSON master format. Intercepts the `Today` filter directly.
-  - `stage_dropoff_service.py`: Handles pure mathematical drop-off mapping. 
-- **`app/queries/dashboard_queries.py`**: The raw ClickHouse execution strings containing rigorous `SUM()`, `AVG()`, and `GROUP BY` logic isolated for execution.
-- **`app/schemas/executive_schema.py`**: Pydantic Type-safety files. If a python variable isn't whitelisted here (e.g., `trend_data: List[Dict]`), FastAPI will instantly drop it from the final React delivery package.
-- **`scripts/`**: Python generators holding the mock factory script to push 200,000 algorithmic rows into local ClickHouse infrastructure.
+Powered by Python **FastAPI** running on Port `8000`.
+- **`app/routers/`**: Exposed API endpoints mirroring physical URLs.
+- **`app/services/` (The Core Logic Engine)**: Computes trend directions, translates text filters into `timedelta` ranges, evaluates SLA thresholds, and combines SQL outputs.
+- **`app/queries/`**: The raw ClickHouse execution strings.
+- **`scripts/`**: Python mock factory generators capable of pushing hundreds of thousands of algorithmic rows into the local ClickHouse infrastructure.
 
 ---
 
@@ -73,7 +72,7 @@ Install the core Python packages:
 pip install -r requirements.txt
 ```
 
-Generate the Database Schema, load the mock algorithm rows, and build the materialized views. Note: this script regenerates the dataset backward from the exact moment of execution:
+Generate the Database Schema, load the mock algorithm rows, and build the materialized views. *(Note: this script regenerates the dataset backward from the exact moment of execution)*:
 ```bash
 python scripts/generate_large_data.py
 python scripts/load_data.py
@@ -82,7 +81,7 @@ python setup_mv.py
 
 Run the API Node Development Server:
 ```bash
-python -m uvicorn main:app --reload
+python -m uvicorn main:app --reload --port 8000
 ```
 
 ### 3. Frontend Dependencies
@@ -97,4 +96,4 @@ Start the Vite React Development Server:
 npm run dev
 ```
 
-Navigate to `http://localhost:5173/` to view the fully deployed Dashboard mapped securely to the ClickHouse backend!
+Navigate to `http://localhost:5173/` to view the fully deployed Dashboard mapped securely to your ClickHouse backend!

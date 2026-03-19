@@ -1,36 +1,47 @@
-from datetime import date
+from typing import Dict
 from app.core.database import get_clickhouse_client
-
+from app.utils.date_utils import get_date_range
 
 class MetricsRepository:
 
     @staticmethod
-    def get_today_metrics(metric_date: date):
+    def get_today_metrics(filters: Dict):
 
         client = get_clickhouse_client()
+        from_date, to_date = get_date_range(filters.get("time_range", "This Month"))
+
+        params = {
+            "from_date": from_date,
+            "to_date": to_date,
+            "channel": filters.get("channel", "All Channels") or "All Channels",
+            "region": filters.get("region", "All Regions") or "All Regions",
+            "segment": filters.get("segment", "All Segments") or "All Segments",
+        }
 
         query = """
         SELECT
-            SUM(total_started),
-            SUM(total_completed),
-            SUM(total_failures)
-        FROM dashboard_daily_aggregated
-        WHERE date = {metric_date:Date}
+            SUM(started),
+            SUM(completed),
+            SUM(failures),
+            AVG(avg_time_minutes) / 60
+        FROM dashboard_data
+        WHERE date BETWEEN {from_date:Date} AND {to_date:Date}
+          AND ({channel:String} = 'All Channels' OR channel = {channel:String})
+          AND ({region:String} = 'All Regions' OR region = {region:String})
+          AND ({segment:String} = 'All Segments' OR segment = {segment:String})
         """
 
-        result = client.query(
-            query,
-            parameters={"metric_date": metric_date}
-        ).result_rows
+        result = client.query(query, parameters=params).result_rows
 
-        if not result:
+        if not result or not result[0]:
             return None
 
-        started, completed, failures = result[0]
+        started, completed, failures, avg_processing_hours = result[0]
 
         started = started or 0
         completed = completed or 0
         failures = failures or 0
+        avg_processing_hours = avg_processing_hours or 0
 
         conversion_rate = (completed / started) * 100 if started else 0
 
@@ -38,29 +49,40 @@ class MetricsRepository:
             "started": int(started),
             "completed": int(completed),
             "failures": int(failures),
-            "conversion_rate": float(conversion_rate)
+            "conversion_rate": float(conversion_rate),
+            "avg_processing_hours": float(avg_processing_hours)
         }
 
     @staticmethod
-    def get_baseline_metrics(metric_date: date):
+    def get_baseline_metrics(filters: Dict):
 
         client = get_clickhouse_client()
-
+        
+        # for baseline context we compare roughly against everything strictly BEFORE from_date 
+        from_date, to_date = get_date_range(filters.get("time_range", "This Month"))
+        
+        params = {
+            "from_date": from_date,
+            "channel": filters.get("channel", "All Channels") or "All Channels",
+            "region": filters.get("region", "All Regions") or "All Regions",
+            "segment": filters.get("segment", "All Segments") or "All Segments",
+        }
+        
         query = """
         SELECT
-            SUM(total_started) / SUM(record_count),
-            SUM(total_completed) / SUM(record_count),
-            SUM(total_failures) / SUM(record_count)
-        FROM dashboard_daily_aggregated
-        WHERE date < {metric_date:Date}
+            AVG(started),
+            AVG(completed),
+            AVG(failures)
+        FROM dashboard_data
+        WHERE date < {from_date:Date}
+          AND ({channel:String} = 'All Channels' OR channel = {channel:String})
+          AND ({region:String} = 'All Regions' OR region = {region:String})
+          AND ({segment:String} = 'All Segments' OR segment = {segment:String})
         """
 
-        result = client.query(
-            query,
-            parameters={"metric_date": metric_date}
-        ).result_rows
+        result = client.query(query, parameters=params).result_rows
 
-        if not result:
+        if not result or not result[0]:
             return None
 
         avg_started, avg_completed, avg_failures = result[0]
@@ -79,26 +101,34 @@ class MetricsRepository:
         }
 
     @staticmethod
-    def get_product_metrics(metric_date: date):
+    def get_product_metrics(filters: Dict):
 
         client = get_clickhouse_client()
+        from_date, to_date = get_date_range(filters.get("time_range", "This Month"))
+
+        params = {
+            "from_date": from_date,
+            "to_date": to_date,
+            "channel": filters.get("channel", "All Channels") or "All Channels",
+            "region": filters.get("region", "All Regions") or "All Regions",
+            "segment": filters.get("segment", "All Segments") or "All Segments",
+        }
 
         query = """
         SELECT
             product_name,
-            SUM(total_started),
-            SUM(total_completed),
-            SUM(total_failures)
-        FROM dashboard_daily_aggregated
-        WHERE date = {metric_date:Date}
+            SUM(started),
+            SUM(completed),
+            SUM(failures)
+        FROM dashboard_data
+        WHERE date BETWEEN {from_date:Date} AND {to_date:Date}
+          AND ({channel:String} = 'All Channels' OR channel = {channel:String})
+          AND ({region:String} = 'All Regions' OR region = {region:String})
+          AND ({segment:String} = 'All Segments' OR segment = {segment:String})
         GROUP BY product_name
         """
 
-        result = client.query(
-            query,
-            parameters={"metric_date": metric_date}
-        ).result_rows
-
+        result = client.query(query, parameters=params).result_rows
         products = []
 
         for row in result:
