@@ -1,5 +1,5 @@
 # Stage 1: Builder 
-FROM python:3.11.12-slim-trixie AS builder
+FROM python:3.11-slim-trixie AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 
 # Stage 2: Runtime
-FROM python:3.11.12-slim-trixie
+FROM python:3.11-slim-trixie
 
 WORKDIR /app
 
