@@ -4,6 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from prometheus_fastapi_instrumentator import Instrumentator
+
 from app.routers.executive_router import router as executive_router
 from app.routers.dashboard_router import router as dashboard_router
 from app.routers.debug_router import router as debug_router
@@ -20,6 +22,8 @@ app = FastAPI(
     openapi_url="/openapi.json"
 )
 
+Instrumentator().instrument(app).expose(app)
+
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -27,7 +31,7 @@ origins = [
     "http://127.0.0.1:5174",
   
     "http://business-dashboard-alb-1108487393.ap-southeast-2.elb.amazonaws.com",
-    "http://dugkfqqpvqc7l.cloudfront.net"
+    "http://dugkfqqpvqc7l.cloudfront.net",
     "https://dugkfqqpvqc7l.cloudfront.net"
 ]
 

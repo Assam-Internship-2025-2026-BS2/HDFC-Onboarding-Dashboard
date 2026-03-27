@@ -9,4 +9,7 @@ python-dotenv==1.2.2
 # Security fixes
 jaraco.context>=6.1.0
 wheel>=0.46.2
-setuptools>=79.0.2 
+setuptools>=79.0.2
+
+#monitoring
+prometheus-fastapi-instrumentator==6.1.0
